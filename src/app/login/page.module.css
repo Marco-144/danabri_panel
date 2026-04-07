@@ -1,0 +1,111 @@
+.loginContainer {
+  --primary-color: #1c2140;
+  --secondary-color: #6c757d;
+  --background-start: #ee5c31;
+  --background-end: #293a42;
+
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: linear-gradient(
+    135deg,
+    var(--background-start) ,
+    var(--background-end) 50%
+  );
+  font-family: "All Round Gothic Bold", sans-serif;
+}
+
+.loginCard {
+  width: 100%;
+  max-width: 400px;
+  background: #ffffff;
+  padding: 30px;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.logoWrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.loginLogo {
+  margin: 50px 0;
+}
+
+.fieldGroup {
+  margin-bottom: 1rem;
+}
+
+.formLabel {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.formControl {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.formControl:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(28, 33, 64, 0.12);
+}
+
+.btnPrimary {
+  width: 100%;
+  border: none;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 5px;
+  margin: 20px auto;
+  background-color: var(--background-end);
+  transition: background-color 0.3s ease;
+  cursor: pointer;
+}
+
+.btnPrimary:hover {
+  background-color: #161a34;
+}
+
+.footerText {
+  text-align: center;
+  margin-top: 0.75rem;
+  color: var(--secondary-color);
+  font-size: 0.875rem;
+}
+
+.loginError {
+  animation: loginShake 0.35s ease;
+  border: 1px solid #ef4444;
+}
+
+.loginError .formControl {
+  border-color: #ef4444;
+}
+
+@keyframes loginShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  75% {
+    transform: translateX(6px);
+  }
+}
