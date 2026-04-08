@@ -2,8 +2,9 @@
 // Entrada principal del modulo de clientes.
 // Soporta modos por query: listado, alta, edicion y detalle.
 
-import { Search, ChevronLeft, ChevronRight, Loader, AlertTriangle } from "lucide-react";
-import { useState, useEffect } from "react";
+
+import { Search, ChevronLeft, ChevronRight, Loader, AlertTriangle, Plus } from "lucide-react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getClientes, deleteCliente, updateCliente } from "@/services/clientsService";
@@ -16,6 +17,22 @@ import EditarClientes from "./EditarClientes";
 import VerClienteView from "./VerClienteView";
 
 export default function ClientesPage() {
+  return (
+    <Suspense fallback={<ClientesPageFallback />}>
+      <ClientesPageContent />
+    </Suspense>
+  );
+}
+
+function ClientesPageFallback() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <Loader className="animate-spin text-primary" />
+    </div>
+  );
+}
+
+function ClientesPageContent() {
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode");
   const selectedId = searchParams.get("id");
@@ -199,7 +216,7 @@ function ClientesListView() {
         subtitle="Lista de clientes"
         actions={(
           <Link href="/clientes?mode=add">
-            <Button variant="primary" className="rounded-xl shadow-sm">Agregar Cliente</Button>
+            <Button variant="primary" className="rounded-xl shadow-sm gap-2"><Plus size={16} />Agregar Cliente</Button>
           </Link>
         )}
       />

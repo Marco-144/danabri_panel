@@ -12,19 +12,32 @@ export default function LoginPage() {
   const [nombre, setNombre] = useState("");
   const [password, setPassword] = useState("");
   const [hasError, setHasError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogin = async (event) => {
     event.preventDefault();
 
-    const res = await login(nombre, password);
-
-    if (res.token) {
+    try {
+      setIsSubmitting(true);
       setHasError(false);
-      localStorage.setItem("token", res.token);
-      router.push("/dashboard");
-    } else {
+      setErrorMsg("");
+
+      const res = await login(nombre.trim(), password);
+
+      if (res.token) {
+        localStorage.setItem("token", res.token);
+        router.replace("/dashboard");
+        return;
+      }
+
       setHasError(true);
-      alert(res.error);
+      setErrorMsg(res.error || "No se pudo iniciar sesión");
+    } catch {
+      setHasError(true);
+      setErrorMsg("No se pudo conectar con el servidor");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -58,6 +71,7 @@ export default function LoginPage() {
               onChange={(e) => {
                 setNombre(e.target.value);
                 setHasError(false);
+                setErrorMsg("");
               }}
               required
             />
@@ -76,13 +90,18 @@ export default function LoginPage() {
               onChange={(e) => {
                 setPassword(e.target.value);
                 setHasError(false);
+                setErrorMsg("");
               }}
               required
             />
           </div>
 
-          <button type="submit" className={styles.btnPrimary}>
-            Entrar
+          {hasError && errorMsg && (
+            <p className={styles.errorText}>{errorMsg}</p>
+          )}
+
+          <button type="submit" className={styles.btnPrimary} disabled={isSubmitting}>
+            {isSubmitting ? "Entrando..." : "Entrar"}
           </button>
         </form>
 

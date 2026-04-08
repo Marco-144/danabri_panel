@@ -293,7 +293,7 @@ export default function ProductosPresentacionesPage() {
                     Gestión de Ubicaciones
                 </Button>
 
-                <Button onClick={() => setFormModal({ open: true, mode: "create", item: null })} className="md:ml-auto rounded-xl shadow-sm">
+                <Button onClick={() => setFormModal({ open: true, mode: "create", item: null })} className="bg-primary text-primary-foreground hover:bg-primary/90 md:ml-auto rounded-xl shadow-sm">
                     <Plus size={16} /> Agregar presentacion
                 </Button>
             </div>

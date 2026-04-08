@@ -3,14 +3,19 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 /* import path from "node:path"; */
 
 export default function Sidebar() {
-  const pathname = usePathname();
+  const pathname = usePathname() || "";
   const [almacenesOpen, setAlmacenesOpen] = useState(pathname.startsWith("/almacenes"));
   const [productosOpen, setProductosOpen] = useState(pathname.startsWith("/productos"));
+
+  useEffect(() => {
+    if (pathname.startsWith("/almacenes")) setAlmacenesOpen(true);
+    if (pathname.startsWith("/productos")) setProductosOpen(true);
+  }, [pathname]);
 
   const menu = [
     { name: "Dashboard", path: "/dashboard" },

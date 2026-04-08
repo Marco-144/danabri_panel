@@ -2,9 +2,22 @@ import db from '@/lib/db';
 import { comparePassword, generateToken } from './auth.utils';
 
 export const loginUser = async (nombre, password) => {
+        const loginValue = String(nombre || '').trim();
+
+        if (!loginValue || !password) {
+                throw new Error('Usuario y contraseña son requeridos');
+        }
+
     const [rows] = await db.query(
-        'SELECT * FROM usuarios WHERE nombre = ? AND activo = 1',
-        [nombre]
+                `SELECT *
+                 FROM usuarios
+                 WHERE activo = 1
+                     AND (
+                         LOWER(nombre) = LOWER(?)
+                         OR LOWER(email) = LOWER(?)
+                     )
+                 LIMIT 1`,
+                [loginValue, loginValue]
     );
 
     if (rows.length === 0) {

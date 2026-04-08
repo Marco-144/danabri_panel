@@ -77,6 +77,13 @@
   cursor: pointer;
 }
 
+.errorText {
+  margin: 0 0 12px;
+  color: #b42318;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 .btnPrimary:hover {
   background-color: #161a34;
 }
