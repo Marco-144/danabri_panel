@@ -119,6 +119,130 @@ async function hasPresentacionColumn(columnName) {
     return exists;
 }
 
+async function resolveExistingColumnName(tableName, columnNames) {
+    for (const columnName of columnNames) {
+        if (await hasTableColumn(tableName, columnName)) {
+            return columnName;
+        }
+    }
+    return null;
+}
+
+async function syncPresentacionUbicacion(idPresentacion, data) {
+    try {
+        const hasUbicaciones =
+            (await hasTable("ubicaciones")) &&
+            (await hasTableColumn("ubicaciones", "id_ubicacion")) &&
+            (await hasTableColumn("ubicaciones", "id_almacen")) &&
+            (await hasTableColumn("ubicaciones", "id_rack")) &&
+            (await hasTableColumn("ubicaciones", "id_nivel")) &&
+            (await hasTableColumn("ubicaciones", "id_seccion"));
+
+        const hasUbicacionesPresentaciones =
+            (await hasTable("ubicaciones_presentaciones")) &&
+            (await hasTableColumn("ubicaciones_presentaciones", "id_presentacion")) &&
+            (await hasTableColumn("ubicaciones_presentaciones", "id_ubicacion"));
+
+        if (!hasUbicaciones || !hasUbicacionesPresentaciones) return;
+
+        const idRack = toOptionalPositiveId(data.id_rack, "id_rack");
+        const idNivel = toOptionalPositiveId(data.id_nivel, "id_nivel");
+        const idSeccion = toOptionalPositiveId(data.id_seccion, "id_seccion");
+        const idAlmacen = toOptionalPositiveId(data.id_almacen, "id_almacen");
+
+        if (!idRack || !idNivel || !idSeccion) {
+            await db.execute("DELETE FROM ubicaciones_presentaciones WHERE id_presentacion = ?", [idPresentacion]);
+            return;
+        }
+
+        let existing = [];
+
+        if (idAlmacen) {
+            const [byAllIds] = await db.execute(
+                `SELECT id_ubicacion
+                 FROM ubicaciones
+                 WHERE id_almacen = ? AND id_rack = ? AND id_nivel = ? AND id_seccion = ?
+                 LIMIT 1`,
+                [idAlmacen, idRack, idNivel, idSeccion]
+            );
+            existing = byAllIds;
+        }
+
+        if (!existing?.length) {
+            const [byUbicacionIds] = await db.execute(
+                `SELECT id_ubicacion
+                 FROM ubicaciones
+                 WHERE id_rack = ? AND id_nivel = ? AND id_seccion = ?
+                 LIMIT 1`,
+                [idRack, idNivel, idSeccion]
+            );
+            existing = byUbicacionIds;
+        }
+
+        let idUbicacion = existing?.[0]?.id_ubicacion;
+
+        if (!idUbicacion) {
+            let targetAlmacen = idAlmacen;
+
+            if (!targetAlmacen) {
+                const rackTable = await resolveExistingTableName(["almacen_racks", "almacen_rack"]);
+                if (!rackTable || !["almacen_racks", "almacen_rack"].includes(rackTable)) {
+                    throw new Error("No se encontro tabla valida de racks para resolver almacen");
+                }
+                const [rackRows] = await db.execute(
+                    `SELECT id_almacen FROM \`${rackTable}\` WHERE id_rack = ? LIMIT 1`,
+                    [idRack]
+                );
+                targetAlmacen = rackRows?.[0]?.id_almacen || null;
+            }
+
+            if (!targetAlmacen) {
+                throw new Error("No se pudo determinar el almacen para la ubicacion");
+            }
+
+            const hasActivoCol = await hasTableColumn("ubicaciones", "activo");
+            const [insertUbicacion] = hasActivoCol
+                ? await db.execute(
+                    `INSERT INTO ubicaciones (id_almacen, id_rack, id_nivel, id_seccion, activo)
+                     VALUES (?, ?, ?, ?, 1)`,
+                    [targetAlmacen, idRack, idNivel, idSeccion]
+                )
+                : await db.execute(
+                    `INSERT INTO ubicaciones (id_almacen, id_rack, id_nivel, id_seccion)
+                     VALUES (?, ?, ?, ?)`,
+                    [targetAlmacen, idRack, idNivel, idSeccion]
+                );
+
+            idUbicacion = insertUbicacion.insertId;
+        }
+
+        await db.execute("DELETE FROM ubicaciones_presentaciones WHERE id_presentacion = ?", [idPresentacion]);
+
+        const hasCantidadActual = await hasTableColumn("ubicaciones_presentaciones", "cantidad_actual");
+        if (hasCantidadActual) {
+            await db.execute(
+                `INSERT INTO ubicaciones_presentaciones (id_ubicacion, id_presentacion, cantidad_actual)
+                 VALUES (?, ?, 0)`,
+                [idUbicacion, idPresentacion]
+            );
+        } else {
+            await db.execute(
+                `INSERT INTO ubicaciones_presentaciones (id_ubicacion, id_presentacion)
+                 VALUES (?, ?)`,
+                [idUbicacion, idPresentacion]
+            );
+        }
+    } catch (error) {
+        // No bloquear guardado de presentacion por inconsistencias de ubicaciones/triggers.
+        const message = error?.message || String(error);
+        const hint =
+            message.includes("almacen_racks") || message.includes("danabri.r")
+                ? " Revisa triggers de `ubicaciones` para usar `almacen_rack`."
+                : "";
+        console.warn("No se pudo sincronizar ubicacion de presentacion:", message + hint);
+    }
+}
+
 async function getPresentacionColumnValueList(columnName) {
     if (!PRESENTACION_OPTION_COLUMNS.has(columnName)) {
         throw new Error("Columna de presentacion invalida");
@@ -442,9 +566,8 @@ export const deleteLinea = async (id) => {
 // FAMILIAS
 export const getFamilias = async () => {
     const [rows] = await db.execute(
-        `SELECT f.*, l.nombre AS nombre_linea
+        `SELECT f.*
          FROM familias f
-         INNER JOIN lineas l ON l.id_linea = f.id_linea
          ORDER BY f.nombre ASC`
     );
     return rows;
@@ -452,17 +575,14 @@ export const getFamilias = async () => {
 
 export const createFamilia = async (data) => {
     const nombre = data.nombre ? String(data.nombre).trim() : "";
-    const id_linea = Number(data.id_linea);
     const activo = data.activo === undefined ? true : Boolean(data.activo);
 
     if (!nombre) throw new Error("El nombre de la familia es requerido");
-    if (!id_linea || Number.isNaN(id_linea)) throw new Error("id_linea invalido");
 
     const [result] = await db.execute(
-        `INSERT INTO familias (id_linea, nombre, descuento_1, descuento_2, descuento_3, descuento_4, activo)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO familias (nombre, descuento_1, descuento_2, descuento_3, descuento_4, activo)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
-            id_linea,
             nombre,
             toDiscount(data.descuento_1, "descuento_1"),
             toDiscount(data.descuento_2, "descuento_2"),
@@ -478,13 +598,6 @@ export const createFamilia = async (data) => {
 export const updateFamilia = async (id, data) => {
     const fields = [];
     const params = [];
-
-    if (data.id_linea !== undefined) {
-        const idLinea = Number(data.id_linea);
-        if (!idLinea || Number.isNaN(idLinea)) throw new Error("id_linea invalido");
-        fields.push("id_linea = ?");
-        params.push(idLinea);
-    }
 
     if (data.nombre !== undefined) {
         const nombre = String(data.nombre).trim();
@@ -604,8 +717,8 @@ export const getProductoById = async (id) => {
     const producto = rows[0];
 
     const [presentaciones] = await db.execute(
-        "SELECT id_presentacion, id_producto, nombre, codigo_barras, piezas_por_presentacion, " +
-        "precio_menudeo, precio_mayoreo, activo " +
+        "SELECT id_presentacion, id_producto, nombre, codigo_barras, piezas_por_presentacion, costo, precio_nivel_1, " +
+        "activo " +
         "FROM producto_presentaciones WHERE id_producto = ? ORDER BY id_presentacion DESC",
         [id]
     );
@@ -649,36 +762,45 @@ export const createProducto = async (data) => {
             const nombrePresentacion = p.nombre ? String(p.nombre).trim() : "";
             const codigoBarras = p.codigo_barras ? String(p.codigo_barras).trim() : "";
             const piezas = Number(p.piezas_por_presentacion);
-            const precioMenudeo = Number(p.precio_menudeo);
-            const precioMayoreo = Number(p.precio_mayoreo);
             const activoPresentacion = p.activo === undefined ? true : Boolean(p.activo);
+            const costoPresentacion = p.costo !== undefined && p.costo !== null ? Number(p.costo) : null;
 
             if (!nombrePresentacion || !codigoBarras) {
                 throw new Error("Cada presentacion requiere nombre y codigo_barras");
             }
 
-            if (
-                Number.isNaN(piezas) ||
-                Number.isNaN(precioMenudeo) ||
-                Number.isNaN(precioMayoreo)
-            ) {
+            if (Number.isNaN(piezas)) {
                 throw new Error("Valores numericos invalidos en presentaciones");
             }
 
+            if (costoPresentacion !== null && Number.isNaN(costoPresentacion)) {
+                throw new Error("Costo invalido en presentaciones");
+            }
+
+            const columns = [
+                "id_producto",
+                "nombre",
+                "codigo_barras",
+                "piezas_por_presentacion",
+                "activo",
+            ];
+            const values = [
+                idProducto,
+                nombrePresentacion,
+                codigoBarras,
+                piezas,
+                activoPresentacion,
+            ];
+
+            if (costoPresentacion !== null) {
+                columns.push("costo", "ultimo_costo", "fecha_ultimo_costo");
+                values.push(costoPresentacion, costoPresentacion, new Date());
+            }
+
             await conn.execute(
-                "INSERT INTO producto_presentaciones (" +
-                "id_producto, nombre, codigo_barras, piezas_por_presentacion, " +
-                "precio_menudeo, precio_mayoreo, activo" +
-                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    idProducto,
-                    nombrePresentacion,
-                    codigoBarras,
-                    piezas,
-                    precioMenudeo,
-                    precioMayoreo,
-                    activoPresentacion
-                ]
+                `INSERT INTO producto_presentaciones (${columns.map((column) => `\`${column}\``).join(", ")})
+                 VALUES (${columns.map(() => "?").join(", ")})`,
+                values
             );
         }
 
@@ -761,6 +883,8 @@ export const deleteProducto = async (id) => {
 // PRESENTACIONES
 
 export const getPresentacionesByProducto = async (idProducto) => {
+    const hasTipoPresentacion = await hasPresentacionColumn("tipo_presentacion");
+    const hasUbicacion = await hasPresentacionColumn("ubicacion");
     const hasCodigoUbicacion = await hasPresentacionColumn("codigo_ubicacion");
     const hasIdRack = await hasPresentacionColumn("id_rack");
     const hasIdNivel = await hasPresentacionColumn("id_nivel");
@@ -768,6 +892,10 @@ export const getPresentacionesByProducto = async (idProducto) => {
     const hasIdMarca = await hasPresentacionColumn("id_marca");
     const hasIdLinea = await hasPresentacionColumn("id_linea");
     const hasIdFamilia = await hasPresentacionColumn("id_familia");
+    const hasCosto = await hasPresentacionColumn("costo");
+    const hasIdProveedor = await hasPresentacionColumn("id_proveedor");
+    const hasUltimoCosto = await hasPresentacionColumn("ultimo_costo");
+    const hasFechaUltimoCosto = await hasPresentacionColumn("fecha_ultimo_costo");
 
     const selectColumns = [
         "pp.id_presentacion",
@@ -775,8 +903,28 @@ export const getPresentacionesByProducto = async (idProducto) => {
         "pp.nombre",
         "pp.codigo_barras",
         "pp.piezas_por_presentacion",
-        "pp.precio_menudeo",
-        "pp.precio_mayoreo",
+        hasTipoPresentacion ? "pp.tipo_presentacion" : "NULL AS tipo_presentacion",
+        hasUbicacion ? "pp.ubicacion" : "NULL AS ubicacion",
+        hasCosto ? "pp.costo" : "NULL AS costo",
+        hasIdProveedor ? "pp.id_proveedor" : "NULL AS id_proveedor",
+        hasUltimoCosto ? "pp.ultimo_costo" : "NULL AS ultimo_costo",
+        hasFechaUltimoCosto ? "pp.fecha_ultimo_costo" : "NULL AS fecha_ultimo_costo",
+        // Niveles de precios
+        hasCosto ? "pp.precio_nivel_1" : "NULL AS precio_nivel_1",
+        hasCosto ? "pp.cantidad_nivel_1" : "NULL AS cantidad_nivel_1",
+        hasCosto ? "pp.utilidad_nivel_1" : "NULL AS utilidad_nivel_1",
+        hasCosto ? "pp.precio_nivel_2" : "NULL AS precio_nivel_2",
+        hasCosto ? "pp.cantidad_nivel_2" : "NULL AS cantidad_nivel_2",
+        hasCosto ? "pp.utilidad_nivel_2" : "NULL AS utilidad_nivel_2",
+        hasCosto ? "pp.precio_nivel_3" : "NULL AS precio_nivel_3",
+        hasCosto ? "pp.cantidad_nivel_3" : "NULL AS cantidad_nivel_3",
+        hasCosto ? "pp.utilidad_nivel_3" : "NULL AS utilidad_nivel_3",
+        hasCosto ? "pp.precio_nivel_4" : "NULL AS precio_nivel_4",
+        hasCosto ? "pp.cantidad_nivel_4" : "NULL AS cantidad_nivel_4",
+        hasCosto ? "pp.utilidad_nivel_4" : "NULL AS utilidad_nivel_4",
+        hasCosto ? "pp.precio_nivel_5" : "NULL AS precio_nivel_5",
+        hasCosto ? "pp.cantidad_nivel_5" : "NULL AS cantidad_nivel_5",
+        hasCosto ? "pp.utilidad_nivel_5" : "NULL AS utilidad_nivel_5",
         "pp.activo",
         hasCodigoUbicacion ? "pp.codigo_ubicacion" : "NULL AS codigo_ubicacion",
         hasIdRack ? "pp.id_rack" : "NULL AS id_rack",
@@ -816,11 +964,24 @@ export const getPresentacionesByProducto = async (idProducto) => {
         (await hasTable("ubicaciones")) &&
         (await hasTableColumn("ubicaciones_presentaciones", "id_presentacion")) &&
         (await hasTableColumn("ubicaciones_presentaciones", "id_ubicacion")) &&
-        (await hasTableColumn("ubicaciones", "id_ubicacion")) &&
-        (await hasTableColumn("ubicaciones", "codigo_alfanumerico"));
+        (await hasTableColumn("ubicaciones", "id_ubicacion"));
 
     if (hasUbicacionesJoin) {
-        selectColumns.push("u.codigo_alfanumerico AS codigo_ubicacion_db");
+        const codigoUbicacionColumn = await resolveExistingColumnName("ubicaciones", [
+            "codigo_alfanumerico",
+            "codigo_ubicacion",
+            "codigo",
+            "clave",
+        ]);
+        if (codigoUbicacionColumn) {
+            selectColumns.push(`u.\`${codigoUbicacionColumn}\` AS codigo_ubicacion_db`);
+        } else {
+            selectColumns.push("NULL AS codigo_ubicacion_db");
+        }
+        selectColumns.push("u.id_almacen AS id_almacen_ubicacion");
+        selectColumns.push("u.id_rack AS id_rack_ubicacion");
+        selectColumns.push("u.id_nivel AS id_nivel_ubicacion");
+        selectColumns.push("u.id_seccion AS id_seccion_ubicacion");
         joins.push("LEFT JOIN ubicaciones_presentaciones up ON up.id_presentacion = pp.id_presentacion");
         joins.push("LEFT JOIN ubicaciones u ON u.id_ubicacion = up.id_ubicacion");
     }
@@ -838,7 +999,11 @@ export const getPresentacionesByProducto = async (idProducto) => {
     );
     return rows.map((row) => ({
         ...row,
-        codigo_ubicacion: row.codigo_ubicacion_db || row.codigo_ubicacion || null,
+        codigo_ubicacion: row.codigo_ubicacion_db ?? row.codigo_ubicacion ?? null,
+        id_almacen: row.id_almacen_ubicacion ?? null,
+        id_rack: row.id_rack ?? row.id_rack_ubicacion ?? null,
+        id_nivel: row.id_nivel ?? row.id_nivel_ubicacion ?? null,
+        id_seccion: row.id_seccion ?? row.id_seccion_ubicacion ?? null,
     }));
 };
 
@@ -1034,8 +1199,6 @@ export const createPresentacion = async (idProducto, data) => {
     const nombre = data.nombre ? String(data.nombre).trim() : "";
     const codigo_barras = data.codigo_barras ? String(data.codigo_barras).trim() : "";
     const piezas_por_presentacion = Number(data.piezas_por_presentacion);
-    const precio_menudeo = Number(data.precio_menudeo);
-    const precio_mayoreo = Number(data.precio_mayoreo);
     const activo = data.activo === undefined ? true : Boolean(data.activo);
     const tipo_presentacion = normalizeOptionalText(data.tipo_presentacion);
     const id_marca = normalizeOptionalId(data.id_marca);
@@ -1045,17 +1208,20 @@ export const createPresentacion = async (idProducto, data) => {
     const id_rack = normalizeOptionalId(data.id_rack);
     const id_nivel = normalizeOptionalId(data.id_nivel);
     const id_seccion = normalizeOptionalId(data.id_seccion);
+    const id_almacen = normalizeOptionalId(data.id_almacen);
+    const costo = data.costo !== undefined && data.costo !== null ? Number(data.costo) : null;
+    const id_proveedor = data.id_proveedor !== undefined && data.id_proveedor !== null ? Number(data.id_proveedor) : null;
 
     if (!nombre || !codigo_barras) {
         throw new Error("Nombre y codigo_barras son obligatorios");
     }
 
-    if (
-        Number.isNaN(piezas_por_presentacion) ||
-        Number.isNaN(precio_menudeo) ||
-        Number.isNaN(precio_mayoreo)
-    ) {
-        throw new Error("Valores numericos invalidos");
+    if (Number.isNaN(piezas_por_presentacion)) {
+        throw new Error("piezas_por_presentacion invalido");
+    }
+
+    if (costo !== null && Number.isNaN(costo)) {
+        throw new Error("Costo invalido");
     }
 
     const columns = [
@@ -1063,8 +1229,6 @@ export const createPresentacion = async (idProducto, data) => {
         "nombre",
         "codigo_barras",
         "piezas_por_presentacion",
-        "precio_menudeo",
-        "precio_mayoreo",
         "activo",
     ];
     const values = [
@@ -1072,10 +1236,43 @@ export const createPresentacion = async (idProducto, data) => {
         nombre,
         codigo_barras,
         piezas_por_presentacion,
-        precio_menudeo,
-        precio_mayoreo,
         activo,
     ];
+
+    // Agregar nuevos campos de costo y proveedor
+    if (costo !== null && !Number.isNaN(costo)) {
+        columns.push("costo");
+        values.push(costo);
+        columns.push("ultimo_costo");
+        values.push(costo);
+        columns.push("fecha_ultimo_costo");
+        values.push(new Date());
+    }
+
+    if (id_proveedor !== null && !Number.isNaN(id_proveedor)) {
+        columns.push("id_proveedor");
+        values.push(id_proveedor);
+    }
+
+    // Agregar niveles de precios
+    for (let nivel = 1; nivel <= 5; nivel++) {
+        const precio = data[`precio_nivel_${nivel}`] !== undefined ? Number(data[`precio_nivel_${nivel}`]) : null;
+        const cantidad = data[`cantidad_nivel_${nivel}`] !== undefined ? Number(data[`cantidad_nivel_${nivel}`]) : null;
+        const utilidad = data[`utilidad_nivel_${nivel}`] !== undefined ? Number(data[`utilidad_nivel_${nivel}`]) : null;
+
+        if (precio !== null && !Number.isNaN(precio)) {
+            columns.push(`precio_nivel_${nivel}`);
+            values.push(precio);
+        }
+        if (cantidad !== null && !Number.isNaN(cantidad)) {
+            columns.push(`cantidad_nivel_${nivel}`);
+            values.push(cantidad);
+        }
+        if (utilidad !== null && !Number.isNaN(utilidad)) {
+            columns.push(`utilidad_nivel_${nivel}`);
+            values.push(utilidad);
+        }
+    }
 
     const extraFields = {
         tipo_presentacion,
@@ -1083,6 +1280,7 @@ export const createPresentacion = async (idProducto, data) => {
         id_linea,
         id_familia,
         ubicacion,
+        codigo_ubicacion: normalizeOptionalText(data.codigo_ubicacion),
         id_rack,
         id_nivel,
         id_seccion,
@@ -1101,6 +1299,38 @@ export const createPresentacion = async (idProducto, data) => {
          VALUES (${columns.map(() => "?").join(", ")})`,
         values
     );
+
+    await syncPresentacionUbicacion(result.insertId, {
+        id_almacen,
+        id_rack,
+        id_nivel,
+        id_seccion,
+    });
+
+    // Fallback: si la tabla de presentaciones no tiene estos campos, se guardan a nivel producto.
+    const productFallbackFields = [];
+    const productFallbackParams = [];
+
+    if (!(await hasPresentacionColumn("id_marca")) && id_marca !== undefined) {
+        productFallbackFields.push("id_marca = ?");
+        productFallbackParams.push(id_marca);
+    }
+    if (!(await hasPresentacionColumn("id_linea")) && id_linea !== undefined) {
+        productFallbackFields.push("id_linea = ?");
+        productFallbackParams.push(id_linea);
+    }
+    if (!(await hasPresentacionColumn("id_familia")) && id_familia !== undefined) {
+        productFallbackFields.push("id_familia = ?");
+        productFallbackParams.push(id_familia);
+    }
+
+    if (productFallbackFields.length > 0) {
+        productFallbackParams.push(idProducto);
+        await db.execute(
+            `UPDATE productos SET ${productFallbackFields.join(", ")} WHERE id_producto = ?`,
+            productFallbackParams
+        );
+    }
 
     return { id: result.insertId };
 };
@@ -1130,18 +1360,75 @@ export const updatePresentacion = async (idPresentacion, data) => {
         params.push(n);
     }
 
-    if (data.precio_menudeo !== undefined) {
-        const n = Number(data.precio_menudeo);
-        if (Number.isNaN(n)) throw new Error("precio_menudeo invalido");
-        fields.push("precio_menudeo = ?");
-        params.push(n);
+    // Manejar nuevo campo costo
+    if (data.costo !== undefined) {
+        if (data.costo === null) {
+            fields.push("costo = ?");
+            params.push(null);
+        } else {
+            const n = Number(data.costo);
+            if (Number.isNaN(n)) throw new Error("costo invalido");
+            fields.push("costo = ?");
+            params.push(n);
+            // Actualizar último costo cuando cambia el costo
+            if (await hasPresentacionColumn("ultimo_costo")) {
+                fields.push("ultimo_costo = ?");
+                params.push(n);
+            }
+            if (await hasPresentacionColumn("fecha_ultimo_costo")) {
+                fields.push("fecha_ultimo_costo = ?");
+                params.push(new Date());
+            }
+        }
     }
 
-    if (data.precio_mayoreo !== undefined) {
-        const n = Number(data.precio_mayoreo);
-        if (Number.isNaN(n)) throw new Error("precio_mayoreo invalido");
-        fields.push("precio_mayoreo = ?");
-        params.push(n);
+    if (data.id_proveedor !== undefined) {
+        if (data.id_proveedor === null) {
+            fields.push("id_proveedor = ?");
+            params.push(null);
+        } else {
+            const n = Number(data.id_proveedor);
+            if (Number.isNaN(n)) throw new Error("id_proveedor invalido");
+            fields.push("id_proveedor = ?");
+            params.push(n);
+        }
+    }
+
+    // Agregar lógica para niveles de precios
+    for (let nivel = 1; nivel <= 5; nivel++) {
+        if (data[`precio_nivel_${nivel}`] !== undefined) {
+            if (data[`precio_nivel_${nivel}`] === null) {
+                fields.push(`precio_nivel_${nivel} = ?`);
+                params.push(null);
+            } else {
+                const n = Number(data[`precio_nivel_${nivel}`]);
+                if (Number.isNaN(n)) throw new Error(`precio_nivel_${nivel} invalido`);
+                fields.push(`precio_nivel_${nivel} = ?`);
+                params.push(n);
+            }
+        }
+        if (data[`cantidad_nivel_${nivel}`] !== undefined) {
+            if (data[`cantidad_nivel_${nivel}`] === null) {
+                fields.push(`cantidad_nivel_${nivel} = ?`);
+                params.push(null);
+            } else {
+                const n = Number(data[`cantidad_nivel_${nivel}`]);
+                if (Number.isNaN(n)) throw new Error(`cantidad_nivel_${nivel} invalido`);
+                fields.push(`cantidad_nivel_${nivel} = ?`);
+                params.push(n);
+            }
+        }
+        if (data[`utilidad_nivel_${nivel}`] !== undefined) {
+            if (data[`utilidad_nivel_${nivel}`] === null) {
+                fields.push(`utilidad_nivel_${nivel} = ?`);
+                params.push(null);
+            } else {
+                const n = Number(data[`utilidad_nivel_${nivel}`]);
+                if (Number.isNaN(n)) throw new Error(`utilidad_nivel_${nivel} invalido`);
+                fields.push(`utilidad_nivel_${nivel} = ?`);
+                params.push(n);
+            }
+        }
     }
 
     if (data.activo !== undefined) {
@@ -1155,6 +1442,7 @@ export const updatePresentacion = async (idPresentacion, data) => {
         id_linea: normalizeOptionalId(data.id_linea),
         id_familia: normalizeOptionalId(data.id_familia),
         ubicacion: normalizeOptionalText(data.ubicacion),
+        codigo_ubicacion: normalizeOptionalText(data.codigo_ubicacion),
         id_rack: normalizeOptionalId(data.id_rack),
         id_nivel: normalizeOptionalId(data.id_nivel),
         id_seccion: normalizeOptionalId(data.id_seccion),
@@ -1183,18 +1471,126 @@ export const updatePresentacion = async (idPresentacion, data) => {
         throw new Error("Presentacion no encontrada");
     }
 
+    await syncPresentacionUbicacion(idPresentacion, {
+        id_almacen: data.id_almacen,
+        id_rack: data.id_rack,
+        id_nivel: data.id_nivel,
+        id_seccion: data.id_seccion,
+    });
+
+    // Fallback: persistir marca/linea/familia en productos si esas columnas no existen en presentaciones.
+    const productFallbackFields = [];
+    const productFallbackParams = [];
+
+    const normalizeProductRelationValue = (value) => {
+        if (value === undefined) return undefined;
+        if (value === null || value === "") return null;
+        return normalizeOptionalId(value);
+    };
+
+    if (!(await hasPresentacionColumn("id_marca")) && data.id_marca !== undefined) {
+        productFallbackFields.push("id_marca = ?");
+        productFallbackParams.push(normalizeProductRelationValue(data.id_marca));
+    }
+    if (!(await hasPresentacionColumn("id_linea")) && data.id_linea !== undefined) {
+        productFallbackFields.push("id_linea = ?");
+        productFallbackParams.push(normalizeProductRelationValue(data.id_linea));
+    }
+    if (!(await hasPresentacionColumn("id_familia")) && data.id_familia !== undefined) {
+        productFallbackFields.push("id_familia = ?");
+        productFallbackParams.push(normalizeProductRelationValue(data.id_familia));
+    }
+
+    if (productFallbackFields.length > 0) {
+        const [rows] = await db.execute(
+            "SELECT id_producto FROM producto_presentaciones WHERE id_presentacion = ? LIMIT 1",
+            [idPresentacion]
+        );
+        const idProducto = rows?.[0]?.id_producto;
+        if (idProducto) {
+            productFallbackParams.push(idProducto);
+            await db.execute(
+                `UPDATE productos SET ${productFallbackFields.join(", ")} WHERE id_producto = ?`,
+                productFallbackParams
+            );
+        }
+    }
+
     return { message: "Presentacion actualizada" };
 };
 
 export const deletePresentacion = async (idPresentacion) => {
-    const [result] = await db.execute(
-        "DELETE FROM producto_presentaciones WHERE id_presentacion = ?",
-        [idPresentacion]
-    );
+    const connection = await db.getConnection();
 
-    if (result.affectedRows === 0) {
-        throw new Error("Presentacion no encontrada");
+    try {
+        await connection.beginTransaction();
+
+        const hasUbicacionesPresentaciones =
+            (await hasTable("ubicaciones_presentaciones")) &&
+            (await hasTableColumn("ubicaciones_presentaciones", "id_presentacion"));
+        const hasIdUbicacionInUP =
+            hasUbicacionesPresentaciones &&
+            (await hasTableColumn("ubicaciones_presentaciones", "id_ubicacion"));
+        const hasUbicaciones =
+            (await hasTable("ubicaciones")) &&
+            (await hasTableColumn("ubicaciones", "id_ubicacion"));
+
+        let ubicacionIds = [];
+
+        if (hasIdUbicacionInUP) {
+            const [linkedRows] = await connection.execute(
+                "SELECT id_ubicacion FROM ubicaciones_presentaciones WHERE id_presentacion = ?",
+                [idPresentacion]
+            );
+            ubicacionIds = linkedRows
+                .map((row) => Number(row.id_ubicacion))
+                .filter((id) => Number.isInteger(id) && id > 0);
+        }
+
+        if (hasUbicacionesPresentaciones) {
+            await connection.execute(
+                "DELETE FROM ubicaciones_presentaciones WHERE id_presentacion = ?",
+                [idPresentacion]
+            );
+        }
+
+        const [result] = await connection.execute(
+            "DELETE FROM producto_presentaciones WHERE id_presentacion = ?",
+            [idPresentacion]
+        );
+
+        if (result.affectedRows === 0) {
+            throw new Error("Presentacion no encontrada");
+        }
+
+        if (hasUbicaciones && ubicacionIds.length > 0) {
+            const placeholders = ubicacionIds.map(() => "?").join(", ");
+            await connection.execute(
+                `DELETE FROM ubicaciones
+                                 WHERE id_ubicacion IN (${placeholders})
+                                     AND NOT EXISTS (
+                                         SELECT 1
+                                         FROM ubicaciones_presentaciones up
+                                         WHERE up.id_ubicacion = ubicaciones.id_ubicacion
+                                     )`,
+                ubicacionIds
+            );
+        }
+
+        await connection.commit();
+        return { message: "Presentacion eliminada" };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
     }
+};
 
-    return { message: "Presentacion eliminada" };
+// PROVEEDORES
+export const getProveedores = async () => {
+    const [rows] = await db.execute(
+        "SELECT id_proveedor, nombre FROM proveedores WHERE activo = 1 OR activo = true ORDER BY nombre ASC"
+    );
+    return rows || [];
 };

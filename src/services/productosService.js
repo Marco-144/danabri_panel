@@ -381,3 +381,9 @@ export async function deleteFamilia(id) {
     }
     return await res.json();
 }
+
+export async function getProveedores() {
+    const res = await fetch("/api/proveedores");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+}

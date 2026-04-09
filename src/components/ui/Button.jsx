@@ -10,6 +10,7 @@ const variants = {
     danger: "bg-red-600 text-white hover:bg-red-700",
     tabActive: "bg-primary text-white border-primary",
     tabIdle: "bg-white text-primary border-border hover:bg-background",
+    lightghost: "text-primary hover:bg-[#f0f0f0]",
 };
 
 const sizes = {

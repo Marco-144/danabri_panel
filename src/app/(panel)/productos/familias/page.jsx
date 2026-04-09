@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader, Search, Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
-import { getFamilias, createFamilia, updateFamilia, deleteFamilia, getLineas } from "@/services/productosService";
+import { getFamilias, createFamilia, updateFamilia, deleteFamilia } from "@/services/productosService";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import Select from "@/components/ui/Select";
 import PageTitle from "@/components/ui/PageTitle";
 
 export default function ProductosFamiliasPage() {
@@ -13,7 +12,6 @@ export default function ProductosFamiliasPage() {
     const [error, setError] = useState("");
     const [search, setSearch] = useState("");
     const [rows, setRows] = useState([]);
-    const [lineas, setLineas] = useState([]);
 
     const [formModal, setFormModal] = useState({ open: false, mode: "create", item: null });
     const [deleteItem, setDeleteItem] = useState(null);
@@ -23,9 +21,8 @@ export default function ProductosFamiliasPage() {
     const load = async () => {
         try {
             setLoading(true);
-            const [familias, lineasData] = await Promise.all([getFamilias(), getLineas()]);
+            const familias = await getFamilias();
             setRows(Array.isArray(familias) ? familias : []);
-            setLineas(Array.isArray(lineasData) ? lineasData : []);
             setError("");
         } catch (err) {
             setError(err.message || "No se pudo cargar familias");
@@ -37,10 +34,7 @@ export default function ProductosFamiliasPage() {
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return rows;
-        return rows.filter((r) =>
-            String(r.nombre || "").toLowerCase().includes(q) ||
-            String(r.nombre_linea || "").toLowerCase().includes(q)
-        );
+        return rows.filter((r) => String(r.nombre || "").toLowerCase().includes(q));
     }, [rows, search]);
 
     const onSave = async (payload) => {
@@ -86,7 +80,6 @@ export default function ProductosFamiliasPage() {
                     <thead className="bg-background text-primary">
                         <tr>
                             <th className="text-left p-3">Familia</th>
-                            <th className="text-left p-3">Linea</th>
                             <th className="text-left p-3">Desc. 1</th>
                             <th className="text-left p-3">Desc. 2</th>
                             <th className="text-left p-3">Desc. 3</th>
@@ -98,7 +91,7 @@ export default function ProductosFamiliasPage() {
                     <tbody>
                         {filtered.length === 0 && (
                             <tr>
-                                <td colSpan={5} className="p-6 text-center text-muted">No hay familias para mostrar.</td>
+                                <td colSpan={7} className="p-6 text-center text-muted">No hay familias para mostrar.</td>
                             </tr>
                         )}
 
@@ -107,7 +100,6 @@ export default function ProductosFamiliasPage() {
                             return (
                                 <tr key={r.id_familia} className="border-t border-border hover:bg-background/50">
                                     <td className="p-3">{r.nombre}</td>
-                                    <td className="p-3">{r.nombre_linea}</td>
                                     <td className="p-3">{`${r.descuento_1 || 0}`}</td>
                                     <td className="p-3">{`${r.descuento_2 || 0}`}</td>
                                     <td className="p-3">{`${r.descuento_3 || 0}`}</td>
@@ -135,7 +127,6 @@ export default function ProductosFamiliasPage() {
                     <FamiliaFormModalInline
                         mode={formModal.mode}
                         item={formModal.item}
-                        lineas={lineas}
                         onClose={() => setFormModal({ open: false, mode: "create", item: null })}
                         onSave={onSave}
                     />
@@ -164,9 +155,8 @@ export default function ProductosFamiliasPage() {
     );
 }
 
-function FamiliaFormModalInline({ mode, item, lineas, onClose, onSave }) {
+function FamiliaFormModalInline({ mode, item, onClose, onSave }) {
     const [form, setForm] = useState({
-        id_linea: item?.id_linea ? String(item.id_linea) : "",
         nombre: item?.nombre || "",
         descuento_1: item?.descuento_1 ?? 0,
         descuento_2: item?.descuento_2 ?? 0,
@@ -178,7 +168,6 @@ function FamiliaFormModalInline({ mode, item, lineas, onClose, onSave }) {
     const submit = (e) => {
         e.preventDefault();
         onSave?.({
-            id_linea: Number(form.id_linea),
             nombre: form.nombre.trim(),
             descuento_1: Number(form.descuento_1),
             descuento_2: Number(form.descuento_2),
@@ -196,16 +185,6 @@ function FamiliaFormModalInline({ mode, item, lineas, onClose, onSave }) {
             </div>
 
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="md:col-span-2">
-                    <Select
-                        label="Linea"
-                        value={form.id_linea}
-                        onChange={(e) => setForm((p) => ({ ...p, id_linea: e.target.value }))}
-                        options={lineas.map((l) => ({ value: l.id_linea, label: l.nombre }))}
-                        placeholder="Selecciona linea"
-                    />
-                </div>
-
                 <div className="md:col-span-2">
                     <label className="text-sm text-muted block mb-1">Nombre</label>
                     <Input value={form.nombre} onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))} inputClassName="py-2" />

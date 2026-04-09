@@ -3,11 +3,12 @@
 // Soporta modos por query: listado, alta, edicion y detalle.
 
 
-import { Search, ChevronLeft, ChevronRight, Loader, AlertTriangle, Plus } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Loader, AlertTriangle, Plus, Pencil, Eye, Trash } from "lucide-react";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getClientes, deleteCliente, updateCliente } from "@/services/clientsService";
+import { getCatalogosClientes } from "@/services/configuracionService";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import PageTitle from "@/components/ui/PageTitle";
@@ -69,8 +70,10 @@ function ClientesListView() {
   });
   const [filters, setFilters] = useState({
     tipo_cliente: "all",
+    giro: "all",
     activo: "all",
   });
+  const [catalogos, setCatalogos] = useState({ giros: [], tipos_cliente: [] });
   const pageSize = 10;
 
   useEffect(() => {
@@ -91,6 +94,22 @@ function ClientesListView() {
     loadClientes();
   }, []);
 
+  useEffect(() => {
+    const loadCatalogos = async () => {
+      try {
+        const result = await getCatalogosClientes();
+        setCatalogos({
+          giros: Array.isArray(result.giros) ? result.giros.filter((item) => item.activo === 1 || item.activo === true) : [],
+          tipos_cliente: Array.isArray(result.tipos_cliente) ? result.tipos_cliente.filter((item) => item.activo === 1 || item.activo === true) : [],
+        });
+      } catch {
+        setCatalogos({ giros: [], tipos_cliente: [] });
+      }
+    };
+
+    loadCatalogos();
+  }, []);
+
   const filteredData = data.filter(
     (cliente) => {
       // Filtros combinados: busqueda, tipo y estado.
@@ -102,13 +121,17 @@ function ClientesListView() {
         filters.tipo_cliente === "all" ||
         String(cliente.tipo_cliente).toLowerCase() === filters.tipo_cliente;
 
+      const byGiro =
+        filters.giro === "all" ||
+        String(cliente.giro || "").toLowerCase() === filters.giro;
+
       const isActivo = cliente.activo === 1 || cliente.activo === "1";
       const byActivo =
         filters.activo === "all" ||
         (filters.activo === "activo" && isActivo) ||
         (filters.activo === "inactivo" && !isActivo);
 
-      return bySearch && byTipo && byActivo;
+      return bySearch && byTipo && byGiro && byActivo;
     }
   );
 
@@ -139,6 +162,19 @@ function ClientesListView() {
       setCurrentPage(totalPages);
     }
   }, [currentPage, totalPages]);
+
+  const tiposClienteDisponibles = Array.from(
+    new Set(
+      data
+        .map((cliente) => String(cliente.tipo_cliente || "").trim())
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+
+  const girosDisponibles = catalogos.giros
+    .map((giro) => String(giro.nombre || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
 
   if (loading) {
     return (
@@ -225,8 +261,10 @@ function ClientesListView() {
       <div className="p-4 rounded-2xl flex flex-col md:flex-row mb-4 gap-3 md:items-center">
         <ClientesFiltersInline
           value={filters}
+          giros={girosDisponibles}
+          tiposCliente={tiposClienteDisponibles}
           onApply={setFilters}
-          onClear={() => setFilters({ tipo_cliente: "all", activo: "all" })}
+          onClear={() => setFilters({ tipo_cliente: "all", giro: "all", activo: "all" })}
         />
 
         <div className="relative inline-block w-full md:w-[460px]">
@@ -352,9 +390,9 @@ function ClientesListView() {
   );
 }
 
-function ClientesFiltersInline({ value, onApply, onClear }) {
+function ClientesFiltersInline({ value, giros = [], tiposCliente = [], onApply, onClear }) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(value || { tipo_cliente: "all", activo: "all" });
+  const [draft, setDraft] = useState(value || { tipo_cliente: "all", giro: "all", activo: "all" });
 
   const handleApply = () => {
     onApply?.(draft);
@@ -362,7 +400,7 @@ function ClientesFiltersInline({ value, onApply, onClear }) {
   };
 
   const handleClear = () => {
-    const reset = { tipo_cliente: "all", activo: "all" };
+    const reset = { tipo_cliente: "all", giro: "all", activo: "all" };
     setDraft(reset);
     onClear?.();
     setOpen(false);
@@ -373,7 +411,7 @@ function ClientesFiltersInline({ value, onApply, onClear }) {
       <div className="relative inline-block">
         <Button
           onClick={() => {
-            setDraft(value || { tipo_cliente: "all", activo: "all" });
+            setDraft(value || { tipo_cliente: "all", giro: "all", activo: "all" });
             setOpen(!open);
           }}
           variant="outline"
@@ -386,10 +424,37 @@ function ClientesFiltersInline({ value, onApply, onClear }) {
           <div className="absolute z-20 mt-2 w-[290px] rounded-2xl border border-border bg-white shadow-card p-4">
             <div className="mb-4">
               <p className="text-xs text-muted mb-2">Tipo cliente</p>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <FilterBtn active={draft.tipo_cliente === "all"} onClick={() => setDraft((prev) => ({ ...prev, tipo_cliente: "all" }))}>Todos</FilterBtn>
-                <FilterBtn active={draft.tipo_cliente === "mayoreo"} onClick={() => setDraft((prev) => ({ ...prev, tipo_cliente: "mayoreo" }))}>Mayoreo</FilterBtn>
-                <FilterBtn active={draft.tipo_cliente === "menudeo"} onClick={() => setDraft((prev) => ({ ...prev, tipo_cliente: "menudeo" }))}>Menudeo</FilterBtn>
+                {tiposCliente.map((tipo) => {
+                  const valueTipo = tipo.toLowerCase();
+                  return (
+                    <FilterBtn
+                      key={tipo}
+                      active={draft.tipo_cliente === valueTipo}
+                      onClick={() => setDraft((prev) => ({ ...prev, tipo_cliente: valueTipo }))}>
+                      {tipo}
+                    </FilterBtn>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mb-2">
+              <p className="text-xs text-muted mb-2">Giro</p>
+              <div className="flex gap-2 flex-wrap">
+                <FilterBtn active={draft.giro === "all"} onClick={() => setDraft((prev) => ({ ...prev, giro: "all" }))}>Todos</FilterBtn>
+                {giros.map((giro) => {
+                  const valueGiro = giro.toLowerCase();
+                  return (
+                    <FilterBtn
+                      key={giro}
+                      active={draft.giro === valueGiro}
+                      onClick={() => setDraft((prev) => ({ ...prev, giro: valueGiro }))}>
+                      {giro}
+                    </FilterBtn>
+                  );
+                })}
               </div>
             </div>
 
@@ -432,9 +497,10 @@ function ClienteTableInline({ data, onDelete, onToggleStatus, pendingId }) {
       <thead className="bg-background text-primary">
         <tr>
           <th className="text-left p-3">Nombre</th>
-          <th className="text-left p-3">RFC</th>
+          <th className="text-left p-3">Giro</th>
           <th className="text-left p-3">Telefono</th>
           <th className="text-left p-3">Tipo</th>
+          <th className="text-left p-3">Dias de Ruta</th>
           <th className="text-left p-3">Estado</th>
           <th className="text-center p-3">Acciones</th>
         </tr>
@@ -450,9 +516,10 @@ function ClienteTableInline({ data, onDelete, onToggleStatus, pendingId }) {
         {data.map((c) => (
           <tr key={c.id_cliente ?? c.id} className="border-t border-border hover:bg-background/60">
             <td className="p-3">{c.nombre}</td>
-            <td className="p-3">{c.rfc}</td>
+            <td className="p-3">{c.giro}</td>
             <td className="p-3">{c.telefono}</td>
-            <td className="p-3 capitalize">{c.tipo_cliente}</td>
+            <td className="p-3">{c.tipo_cliente}</td>
+            <td className="p-3">{c.dias_rutas || "-"}</td>
             <td className="p-3">
               {(() => {
                 const isActivo = c.activo === 1 || c.activo === "1";
@@ -470,17 +537,15 @@ function ClienteTableInline({ data, onDelete, onToggleStatus, pendingId }) {
             </td>
 
             <td className="p-3">
-              <div className="flex justify-center gap-3 text-muted">
-                <Link href={`/clientes?mode=view&id=${c.id_cliente ?? c.id}`} className="inline-flex">Ver</Link>
-                <Link href={`/clientes?mode=edit&id=${c.id_cliente ?? c.id}`} className="inline-flex">Editar</Link>
-                <Button
-                  onClick={() => onDelete?.(c.id_cliente ?? c.id)}
-                  disabled={pendingId === (c.id_cliente ?? c.id)}
-                  variant="ghost"
-                  className="p-0 h-auto"
-                  aria-label="Eliminar cliente"
-                >
-                  Eliminar
+              <div className="flex justify-center text-muted">
+                <Link href={`/clientes?mode=view&id=${c.id_cliente ?? c.id}`}>
+                  <Button variant="lightghost" className="p-0 h-auto"><Eye size={18} className="hover:text-primary" /></Button>
+                </Link>
+                <Link href={`/clientes?mode=edit&id=${c.id_cliente ?? c.id}`}>
+                  <Button variant="lightghost" className="p-0 h-auto"><Pencil size={18} className="hover:text-yellow-700" /></Button>
+                </Link>
+                <Button variant="lightghost" className="p-0 h-auto" onClick={() => onDelete?.(c.id_cliente ?? c.id)} disabled={pendingId === (c.id_cliente ?? c.id)} aria-label="Eliminar cliente">
+                  <Trash size={18} className="hover:text-red-600" />
                 </Button>
               </div>
             </td>

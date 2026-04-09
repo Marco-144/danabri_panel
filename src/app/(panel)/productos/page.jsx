@@ -238,8 +238,8 @@ export default function ProductosPage() {
                                             <th className="text-left p-2">Nombre</th>
                                             <th className="text-left p-2">Codigo</th>
                                             <th className="text-left p-2">Piezas</th>
-                                            <th className="text-left p-2">M</th>
-                                            <th className="text-left p-2">MY</th>
+                                            <th className="text-left p-2">Costo</th>
+                                            <th className="text-left p-2">Precio N1</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -253,8 +253,8 @@ export default function ProductosPage() {
                                                 <td className="p-2">{pp.nombre}</td>
                                                 <td className="p-2">{pp.codigo_barras}</td>
                                                 <td className="p-2">{pp.piezas_por_presentacion}</td>
-                                                <td className="p-2">${Number(pp.precio_menudeo || 0).toFixed(2)}</td>
-                                                <td className="p-2">${Number(pp.precio_mayoreo || 0).toFixed(2)}</td>
+                                                <td className="p-2">${Number(pp.costo || 0).toFixed(2)}</td>
+                                                <td className="p-2">${Number(pp.precio_nivel_1 || 0).toFixed(2)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
