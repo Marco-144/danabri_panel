@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, UserPlus } from "lucide-react";
 import Link from "next/link";
@@ -9,23 +9,12 @@ import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import PageTitle from "@/components/ui/PageTitle";
+import { getCatalogosClientes } from "@/services/configuracionService";
 
 import {
     createCliente,
     updateCliente,
 } from "@/services/clientsService";
-
-const GIROS = [
-    { value: "Comercio", label: "Comercio" },
-    { value: "Servicios", label: "Servicios" },
-    { value: "Manufactura", label: "Manufactura" },
-    { value: "Otro", label: "Otro" },
-];
-
-const TIPOS_CLIENTE = [
-    { value: "menudeo", label: "Menudeo" },
-    { value: "mayoreo", label: "Mayoreo" },
-];
 
 const USO_CFDI = [
     { value: "P01", label: "Por cuenta propia" },
@@ -38,6 +27,7 @@ export default function ClienteFormView({ data = {}, isEdit = false }) {
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState({});
     const [error, setError] = useState("");
+    const [catalogos, setCatalogos] = useState({ giros: [], tipos_cliente: [] });
 
     const [form, setForm] = useState({
         nombre: data.nombre || "",
@@ -56,14 +46,45 @@ export default function ClienteFormView({ data = {}, isEdit = false }) {
         estado: data.estado || "",
         pais: data.pais || "México",
         giro: data.giro || "",
+        credito_habilitado: Boolean(data.credito_habilitado),
+        limite_credito: data.limite_credito ?? "",
+        dias_credito: data.dias_credito ?? "",
+        facturar_sin_pagar: Boolean(data.facturar_sin_pagar),
+        dias_ruta: data.dias_ruta ?? data.dias_rutas ?? "",
     });
 
+    const girosOptions = catalogos.giros.map((item) => ({
+        value: item.nombre,
+        label: item.nombre,
+    }));
+
+    const tiposClienteOptions = catalogos.tipos_cliente.map((item) => ({
+        value: item.nombre,
+        label: `${item.nombre} (Precio ${item.nivel_precio})`,
+    }));
+
+    const loadCatalogos = async () => {
+        try {
+            const dataCatalogos = await getCatalogosClientes();
+            setCatalogos({
+                giros: Array.isArray(dataCatalogos.giros) ? dataCatalogos.giros.filter((item) => item.activo === 1 || item.activo === true) : [],
+                tipos_cliente: Array.isArray(dataCatalogos.tipos_cliente) ? dataCatalogos.tipos_cliente.filter((item) => item.activo === 1 || item.activo === true) : [],
+            });
+        } catch {
+            setCatalogos({ giros: [], tipos_cliente: [] });
+        }
+    };
+
+    useEffect(() => {
+        loadCatalogos();
+    }, []);
+
     const handleChange = (e) => {
-        const { name, value } = e.target;
+        const { name, value, type, checked } = e.target;
 
         setForm((prev) => ({
             ...prev,
-            [name]: value
+            [name]: type === "checkbox" ? checked : value
         }));
 
         if (errors[name]) {
@@ -79,15 +100,23 @@ export default function ClienteFormView({ data = {}, isEdit = false }) {
 
         if (!form.nombre) newErrors.nombre = "Nombre requerido";
         if (!form.tipo_cliente) newErrors.tipo_cliente = "Selecciona tipo";
+        if (!form.giro) newErrors.giro = "Selecciona un giro";
         if (!form.telefono) newErrors.telefono = "Teléfono requerido";
-        if (!form.rfc) newErrors.rfc = "RFC requerido";
-        if (!form.curp) newErrors.curp = "CURP requerido";
         if (!form.calle) newErrors.calle = "Calle requerida";
         if (!form.num_exterior) newErrors.num_exterior = "Número requerido";
         if (!form.colonia) newErrors.colonia = "Colonia requerida";
         if (!form.cp) newErrors.cp = "CP requerido";
         if (!form.ciudad) newErrors.ciudad = "Ciudad requerida";
         if (!form.estado) newErrors.estado = "Estado requerido";
+
+        if (form.credito_habilitado) {
+            if (form.limite_credito === "" || Number(form.limite_credito) <= 0) {
+                newErrors.limite_credito = "Ingresa un límite de crédito válido";
+            }
+            if (form.dias_credito === "" || Number(form.dias_credito) <= 0) {
+                newErrors.dias_credito = "Ingresa días de crédito válidos";
+            }
+        }
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -102,10 +131,17 @@ export default function ClienteFormView({ data = {}, isEdit = false }) {
             setLoading(true);
             setError("");
 
+            const payload = {
+                ...form,
+                limite_credito: form.credito_habilitado && form.limite_credito !== "" ? Number(form.limite_credito) : null,
+                dias_credito: form.credito_habilitado && form.dias_credito !== "" ? Number(form.dias_credito) : null,
+                dias_ruta: form.dias_ruta.trim() === "" ? null : form.dias_ruta.trim(),
+            };
+
             if (isEdit) {
-                await updateCliente(data.id_cliente, form);
+                await updateCliente(data.id_cliente, payload);
             } else {
-                await createCliente(form);
+                await createCliente(payload);
             }
 
             router.push("/clientes");
@@ -143,18 +179,94 @@ export default function ClienteFormView({ data = {}, isEdit = false }) {
                 <Card>
                     <Section title="Datos Generales" subtitle="Información base del cliente para identificarlo en el sistema.">
                         <Input label="Nombre *" name="nombre" value={form.nombre} onChange={handleChange} error={errors.nombre} />
-                        <Select label="Giro *" name="giro" value={form.giro} onChange={handleChange} options={GIROS} />
-                        <Select label="Tipo de cliente *" name="tipo_cliente" value={form.tipo_cliente} onChange={handleChange} error={errors.tipo_cliente} options={TIPOS_CLIENTE} />
+                        <Select
+                            label="Giro *"
+                            name="giro"
+                            value={form.giro}
+                            onChange={handleChange}
+                            error={errors.giro}
+                            options={girosOptions}
+                            placeholder={girosOptions.length ? "Seleccionar" : "Sin giros configurados"}
+                        />
+                        <Select
+                            label="Tipo de cliente *"
+                            name="tipo_cliente"
+                            value={form.tipo_cliente}
+                            onChange={handleChange}
+                            error={errors.tipo_cliente}
+                            options={tiposClienteOptions}
+                            placeholder={tiposClienteOptions.length ? "Seleccionar" : "Sin tipos configurados"}
+                        />
                         <Input label="Telefono *" name="telefono" value={form.telefono} onChange={handleChange} error={errors.telefono} />
                         <Input label="Correo" name="email" value={form.email} onChange={handleChange} />
+                        <Input
+                            label="Dias de ruta"
+                            name="dias_ruta"
+                            value={form.dias_ruta}
+                            onChange={handleChange}
+                            placeholder="Ej. Lunes, Miércoles y Viernes"
+                        />
                     </Section>
                 </Card>
 
                 <Card>
                     <Section title="Datos Fiscales" subtitle="Datos fiscales mostrados también en la vista de detalle.">
-                        <Input label="RFC *" name="rfc" value={form.rfc} onChange={handleChange} error={errors.rfc} />
-                        <Input label="CURP *" name="curp" value={form.curp} onChange={handleChange} error={errors.curp} />
-                        <Select label="Uso CFDI *" name="uso_cfdi" value={form.uso_cfdi} onChange={handleChange} options={USO_CFDI} />
+                        <Input label="RFC" name="rfc" value={form.rfc} onChange={handleChange} error={errors.rfc} />
+                        <Input label="CURP" name="curp" value={form.curp} onChange={handleChange} error={errors.curp} />
+                        <Select label="Uso CFDI" name="uso_cfdi" value={form.uso_cfdi} onChange={handleChange} options={USO_CFDI} />
+                    </Section>
+                </Card>
+
+                <Card>
+                    <Section title="Credito y Facturacion" subtitle="Configura crédito, facturación y condiciones de pago para el cliente.">
+                        <label className="flex items-center gap-2 text-sm text-primary">
+                            <input
+                                type="checkbox"
+                                name="credito_habilitado"
+                                checked={Boolean(form.credito_habilitado)}
+                                onChange={handleChange}
+                                className="h-4 w-4"
+                            />
+                            Habilitar credito
+                        </label>
+
+                        {form.credito_habilitado ? (
+                            <>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    label="Limite de credito ($)"
+                                    name="limite_credito"
+                                    value={form.limite_credito}
+                                    onChange={handleChange}
+                                    error={errors.limite_credito}
+                                    placeholder="0.00"
+                                />
+
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    label="Dias de credito"
+                                    name="dias_credito"
+                                    value={form.dias_credito}
+                                    onChange={handleChange}
+                                    error={errors.dias_credito}
+                                    placeholder="0"
+                                />
+                            </>
+                        ) : null}
+
+                        <label className="flex items-center gap-2 text-sm text-primary md:col-span-3">
+                            <input
+                                type="checkbox"
+                                name="facturar_sin_pagar"
+                                checked={Boolean(form.facturar_sin_pagar)}
+                                onChange={handleChange}
+                                className="h-4 w-4"
+                            />
+                            Facturar sin pagar
+                        </label>
                     </Section>
                 </Card>
 

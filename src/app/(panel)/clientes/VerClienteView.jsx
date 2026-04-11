@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, UserRoundSearch, Loader } from "lucide-react";
+import { ArrowLeft, UserRoundSearch, Loader, Plus, Pencil } from "lucide-react";
 import Link from "next/link";
 import { getClienteById } from "@/services/clientsService";
 import Button from "@/components/ui/Button";
@@ -17,6 +17,8 @@ export default function VerClienteView({ id: propId }) {
     const [cliente, setCliente] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+
+    const isTrueFlag = (value) => value === 1 || value === "1" || value === true;
 
     useEffect(() => {
         if (!id) return;
@@ -93,21 +95,29 @@ export default function VerClienteView({ id: propId }) {
                     <FieldCard label="Ciudad" value={cliente.ciudad} />
                     <FieldCard label="Estado" value={cliente.estado} />
                     <FieldCard label="País" value={cliente.pais} />
-                    {cliente.limite_credito && (
-                        <FieldCard
-                            label="Límite de crédito"
-                            value={`$${Number(cliente.limite_credito).toFixed(2)}`}
-                        />
-                    )}
+                    <FieldCard label="Días de ruta" value={cliente.dias_ruta ?? cliente.dias_rutas ?? "-"} />
+                    <FieldCard label="Facturar sin pagar" value={isTrueFlag(cliente.facturar_sin_pagar) ? "Sí" : "No"} />
+                    <FieldCard label="Crédito habilitado" value={isTrueFlag(cliente.credito_habilitado) ? "Sí" : "No"} />
+                    <FieldCard
+                        label="Límite de crédito"
+                        value={cliente.limite_credito ? `$${Number(cliente.limite_credito).toFixed(2)}` : "-"}
+                    />
+                    <FieldCard label="Días de crédito" value={cliente.dias_credito ?? "-"} />
                 </div>
             </section>
 
             <div className="flex justify-end gap-3">
                 <Link href={`/clientes?mode=edit&id=${cliente.id_cliente}`}>
-                    <Button variant="outline">Editar Cliente</Button>
+                    <Button variant="outline">
+                        <Pencil size={16} />
+                        Editar
+                    </Button>
                 </Link>
                 <Link href="/clientes?mode=add">
-                    <Button variant="accent">Nuevo Cliente</Button>
+                    <Button variant="accent">
+                        <Plus size={16} />
+                        Nuevo Cliente
+                    </Button>
                 </Link>
             </div>
         </div>

@@ -12,7 +12,9 @@ module.exports = {
         slidehover: "#33464f",
         background: "#EFF3F5",
         activo: "#7B9E8F",
+        hoveractivo: "#5a7368",
         inactivo: "#B34D51",
+        hoverinactivo: "#9d3e41",
         third: "#82949C",
 
         // extras útiles para UI
