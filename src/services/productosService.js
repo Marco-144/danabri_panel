@@ -383,7 +383,7 @@ export async function deleteFamilia(id) {
 }
 
 export async function getProveedores() {
-    const res = await fetch("/api/proveedores");
+    const res = await fetch("/api/proveedores?activos=1");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
 }

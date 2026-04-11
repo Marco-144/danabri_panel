@@ -1,19 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import { login } from "@/services/auth";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { clearAuthToken, getAuthToken, isTokenExpired, login, saveAuthToken } from "@/services/auth";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import styles from "./page.module.css";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [nombre, setNombre] = useState("");
   const [password, setPassword] = useState("");
   const [hasError, setHasError] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const currentToken = getAuthToken();
+    if (!currentToken) return;
+
+    if (isTokenExpired(currentToken)) {
+      clearAuthToken();
+      return;
+    }
+
+    router.replace("/dashboard");
+  }, [router]);
+
+  useEffect(() => {
+    if (searchParams.get("expired") === "1") {
+      setHasError(true);
+      setErrorMsg("Tu sesión expiró. Inicia sesión nuevamente.");
+    }
+  }, [searchParams]);
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -26,7 +46,7 @@ export default function LoginPage() {
       const res = await login(nombre.trim(), password);
 
       if (res.token) {
-        localStorage.setItem("token", res.token);
+        saveAuthToken(res.token);
         router.replace("/dashboard");
         return;
       }

@@ -47,6 +47,14 @@ export async function getCatalogosClientes() {
   return { giros, tipos_cliente: tiposCliente };
 }
 
+export async function getCatalogosProveedores() {
+  const [giros] = await db.execute(
+    `SELECT id_giro_proveedor, nombre, activo FROM catalogo_giros_proveedor ORDER BY nombre ASC`
+  );
+
+  return { giros };
+}
+
 export async function createGiro(nombre) {
   const cleanNombre = String(nombre || "").trim();
   if (!cleanNombre) {
@@ -89,4 +97,35 @@ export async function createTipoCliente({ nombre, nivel_precio }) {
 export async function deleteTipoCliente(id) {
   await db.execute(`DELETE FROM catalogo_tipos_cliente WHERE id_tipo_cliente = ?`, [id]);
   return { message: "Tipo de cliente eliminado" };
+}
+
+export async function createCatalogoProveedor({ tipo, nombre }) {
+  const cleanNombre = String(nombre || "").trim();
+  if (!cleanNombre) {
+    throw new Error("El nombre es requerido");
+  }
+
+  if (tipo !== "giro") {
+    throw new Error("Solo el catalogo de giro es configurable");
+  }
+
+  await db.execute(
+    `INSERT INTO catalogo_giros_proveedor (nombre, activo) VALUES (?, 1)`,
+    [cleanNombre]
+  );
+  return { message: "Giro de proveedor creado" };
+}
+
+export async function deleteCatalogoProveedor({ tipo, id }) {
+  const catalogoId = Number(id);
+  if (!catalogoId) {
+    throw new Error("El id es requerido");
+  }
+
+  if (tipo !== "giro") {
+    throw new Error("Solo el catalogo de giro es configurable");
+  }
+
+  await db.execute(`DELETE FROM catalogo_giros_proveedor WHERE id_giro_proveedor = ?`, [catalogoId]);
+  return { message: "Giro de proveedor eliminado" };
 }

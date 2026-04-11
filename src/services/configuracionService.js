@@ -1,6 +1,7 @@
 const API_USUARIOS = "/api/configuracion/usuarios";
 const API_ROLES = "/api/configuracion/roles";
 const API_CATALOGOS_CLIENTES = "/api/configuracion/catalogos-clientes";
+const API_CATALOGOS_PROVEEDORES = "/api/configuracion/catalogos-proveedores";
 
 async function parseOrThrow(res) {
     const data = await res.json();
@@ -34,6 +35,30 @@ export async function createCatalogoCliente(payload) {
 export async function deleteCatalogoCliente(payload) {
     return parseOrThrow(
         await fetch(API_CATALOGOS_CLIENTES, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        })
+    );
+}
+
+export async function getCatalogosProveedores() {
+    return parseOrThrow(await fetch(API_CATALOGOS_PROVEEDORES));
+}
+
+export async function createCatalogoProveedor(payload) {
+    return parseOrThrow(
+        await fetch(API_CATALOGOS_PROVEEDORES, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        })
+    );
+}
+
+export async function deleteCatalogoProveedor(payload) {
+    return parseOrThrow(
+        await fetch(API_CATALOGOS_PROVEEDORES, {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),

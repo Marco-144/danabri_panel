@@ -4,7 +4,7 @@
 
 
 import { Search, ChevronLeft, ChevronRight, Loader, AlertTriangle, Plus, Pencil, Eye, Trash } from "lucide-react";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getClientes, deleteCliente, updateCliente } from "@/services/clientsService";
@@ -135,11 +135,17 @@ function ClientesListView() {
     }
   );
 
-  const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const startIndex = (safeCurrentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const paginatedData = filteredData.slice(startIndex, endIndex);
+  const totalItems = filteredData.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
+
+  const paginatedData = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * pageSize;
+    return filteredData.slice(startIndex, startIndex + pageSize);
+  }, [filteredData, safeCurrentPage]);
+
+  const startItem = totalItems === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
+  const endItem = totalItems === 0 ? 0 : Math.min(safeCurrentPage * pageSize, totalItems);
 
   const maxVisiblePages = 5;
   const startPage = Math.max(
@@ -158,6 +164,11 @@ function ClientesListView() {
   }, [searchTerm, filters]);
 
   useEffect(() => {
+    if (currentPage < 1) {
+      setCurrentPage(1);
+      return;
+    }
+
     if (currentPage > totalPages) {
       setCurrentPage(totalPages);
     }
@@ -294,55 +305,65 @@ function ClientesListView() {
           pendingId={pendingId}
         />
 
-        <div className="border-t border-border px-4 py-3 flex justify-end items-center gap-2 bg-white flex-wrap">
-          {totalPages > maxVisiblePages && (
-            <Button
-              onClick={() => setCurrentPage(1)}
-              disabled={safeCurrentPage === 1}
-              variant="outline"
-              className="h-9 min-w-9 px-2"
-              aria-label="Primera página" >
-              «
-            </Button>
-          )}
+        <div className="border-t border-border px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-white flex-wrap">
+          <p className="text-sm text-muted">
+            {totalItems === 0
+              ? "No hay resultados para mostrar."
+              : `Mostrando ${startItem}-${endItem} de ${totalItems} clientes`}
+          </p>
 
-          <Button
-            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            disabled={safeCurrentPage === 1}
-            variant="outline"
-            className="h-9 w-9 p-0"
-            aria-label="Página anterior" >
-            <ChevronLeft size={16} className="mx-auto" />
-          </Button>
+          {totalPages > 1 && (
+            <div className="flex justify-end items-center gap-2 flex-wrap">
+              {totalPages > maxVisiblePages && (
+                <Button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={safeCurrentPage === 1}
+                  variant="outline"
+                  className="h-9 min-w-9 px-2"
+                  aria-label="Primera página" >
+                  «
+                </Button>
+              )}
 
-          {visiblePages.map((page) => (
-            <Button
-              key={page}
-              onClick={() => setCurrentPage(page)}
-              variant={page === safeCurrentPage ? "tabActive" : "tabIdle"}
-              className="h-9 min-w-9 px-3 border text-sm" >
-              {page}
-            </Button>
-          ))}
+              <Button
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={safeCurrentPage === 1}
+                variant="outline"
+                className="h-9 w-9 p-0"
+                aria-label="Página anterior" >
+                <ChevronLeft size={16} className="mx-auto" />
+              </Button>
 
-          <Button
-            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-            disabled={safeCurrentPage === totalPages}
-            variant="outline"
-            className="h-9 w-9 p-0"
-            aria-label="Página siguiente">
-            <ChevronRight size={16} className="mx-auto" />
-          </Button>
+              {visiblePages.map((page) => (
+                <Button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  variant={page === safeCurrentPage ? "tabActive" : "tabIdle"}
+                  className="h-9 min-w-9 px-3 border text-sm" >
+                  {page}
+                </Button>
+              ))}
 
-          {totalPages > maxVisiblePages && (
-            <Button
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={safeCurrentPage === totalPages}
-              variant="outline"
-              className="h-9 min-w-9 px-2"
-              aria-label="Última página">
-              »
-            </Button>
+              <Button
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={safeCurrentPage === totalPages}
+                variant="outline"
+                className="h-9 w-9 p-0"
+                aria-label="Página siguiente">
+                <ChevronRight size={16} className="mx-auto" />
+              </Button>
+
+              {totalPages > maxVisiblePages && (
+                <Button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={safeCurrentPage === totalPages}
+                  variant="outline"
+                  className="h-9 min-w-9 px-2"
+                  aria-label="Última página">
+                  »
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -527,8 +548,9 @@ function ClienteTableInline({ data, onDelete, onToggleStatus, pendingId }) {
                   <Button
                     onClick={() => onToggleStatus?.(c)}
                     disabled={pendingId === (c.id_cliente ?? c.id)}
+                    variant={isActivo ? "activo" : "inactivo"}
                     size="sm"
-                    className={`rounded-full ${isActivo ? "bg-activo text-white hover:bg-activo" : "bg-inactivo text-white hover:bg-inactivo"}`}
+                    className="rounded-full"
                   >
                     {isActivo ? "Activo" : "Inactivo"}
                   </Button>

@@ -2,16 +2,33 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { Box, Boxes, ChevronRight, LayoutDashboard, Map, Package, Settings, ShoppingBag, Truck, Users, ChartNoAxesGantt } from "lucide-react";
+import { Box, Boxes, ChevronRight, LayoutDashboard, LogOut, Map, Package, Settings, ShoppingBag, Truck, UserRound, Users, ChartNoAxesGantt } from "lucide-react";
+import { clearAuthToken, getAuthToken, getAuthUserFromToken, isTokenExpired } from "@/services/auth";
 /* import path from "node:path"; */
 
 export default function Sidebar() {
+  const router = useRouter();
   const pathname = usePathname() || "";
   const [almacenesOpen, setAlmacenesOpen] = useState(false);
   const [productosOpen, setProductosOpen] = useState(false);
+  const [proveedoresOpen, setProveedoresOpen] = useState(false);
+  const [currentUserName] = useState(() => {
+    const token = getAuthToken();
+    if (!token || isTokenExpired(token)) {
+      return "Usuario";
+    }
+
+    const authUser = getAuthUserFromToken(token);
+    return authUser?.nombre || "Usuario";
+  });
   const [, startTransition] = useTransition();
+
+  const handleLogout = () => {
+    clearAuthToken();
+    router.replace("/login");
+  };
 
   // Colapsar secciones automáticamente cuando salgas de ellas
   useEffect(() => {
@@ -22,16 +39,21 @@ export default function Sidebar() {
       if (!pathname.startsWith("/almacenes")) {
         setAlmacenesOpen(false);
       }
+      if (!pathname.startsWith("/proveedores")) {
+        setProveedoresOpen(false);
+      }
     });
   }, [pathname]);
 
   // Expandir si está en cualquier subruta o si está abierto manualmente
   const productosExpanded = productosOpen || pathname.startsWith("/productos");
   const almacenesExpanded = almacenesOpen || pathname.startsWith("/almacenes");
+  const proveedoresExpanded = proveedoresOpen || pathname.startsWith("/proveedores");
 
-  // Seleccionar SOLO si está en la ruta exacta, no en subrutaas
+  // Seleccionar SOLO si está en la ruta exacta, no en subrutas
   const productosSelected = pathname === "/productos";
   const almacenesSelected = pathname === "/almacenes";
+  const proveedoresSelected = pathname === "/proveedores";
 
   const linkBaseClass =
     "w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2";
@@ -57,7 +79,7 @@ export default function Sidebar() {
       </div>
 
       {/* Menu */}
-      <nav className="flex flex-col gap-2 p-4 pb-6">
+      <nav className="flex flex-col gap-2 p-4 pb-6 flex-1">
         <Link
           href="/dashboard"
           className={`${linkBaseClass} ${pathname === "/dashboard" || pathname.startsWith("/dashboard/")
@@ -213,21 +235,45 @@ export default function Sidebar() {
           <span>Clientes</span>
         </Link>
 
-        <div
-          className={`${linkBaseClass} cursor-not-allowed opacity-50 text-gray-400`}>
-          <Truck size={16} />
-          <span>Proveedores</span>
-        </div>
-
-        {/* <Link
-          href="/proveedores"
-          className={` ${linkBaseClass} ${pathname === "/proveedores" || pathname.startsWith("/proveedores/")
+        <button
+          type="button"
+          onClick={() => setProveedoresOpen((v) => !v)}
+          className={`${linkBaseClass} justigy-betwwen ${proveedoresSelected
             ? "bg-accent text-white font-medium"
             : "text-gray-300 hover:bg-slidehover hover:text-white"
-            }`}>
-          <Truck size={16} />
-          <span>Proveedores</span>
-        </Link> */}
+            }`}
+          aria-expanded={proveedoresExpanded}
+          aria-controls="submenu-proveedores">
+          <span className="flex items-center gap-2">
+            <Truck size={16} />
+            <span>Gestión de Proveedores</span>
+          </span>
+          <span className={`transition-transform duration-400 ${proveedoresExpanded ? "rotate-90" : "rotate-0"}`}>
+            <ChevronRight size={16} />
+          </span>
+        </button>
+
+        <div id="submenu-proveedores"
+          className={`${collapseBaseClass} ${proveedoresExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+          <div className="min-h-0">
+            <div className="ml-3 mt-1 flex flex-col gap-1 border-l border-white/10 pl-2">
+              <Link href="/proveedores"
+                className={`${subLinkBaseClass} ${pathname === "/proveedores"
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                Lista de Proveedores
+              </Link>
+              <Link href="/proveedores/ordenes"
+                className={`${subLinkBaseClass} ${pathname === "/proveedores/ordenes" || pathname.startsWith("/proveedores/ordenes/")
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                Órdenes de Compra
+              </Link>
+            </div>
+          </div>
+        </div>
 
         <Link
           href="/ventas"
@@ -269,6 +315,22 @@ export default function Sidebar() {
           <span>Configuracion</span>
         </Link>
       </nav>
+
+      <div className="border-t border-white/10 p-4 space-y-3">
+        <div className="flex items-center gap-2 rounded-lg bg-slidehover px-3 py-2 text-sm text-white">
+          <UserRound size={16} />
+          <span className="truncate">{currentUserName}</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="bg-[#b84129] w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2 text-gray-300 hover:bg-[#B82929] hover:text-white"
+        >
+          <LogOut size={16} />
+          <span>Cerrar sesión</span>
+        </button>
+      </div>
     </aside>
   );
 }
