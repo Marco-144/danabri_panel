@@ -4,7 +4,7 @@ import {
     createProveedor,
     updateProveedor,
     deleteProveedor,
-} from "@/modules/proveedores.service";
+} from "@/modules/suppliers.service";
 
 export async function GET(req) {
     try {

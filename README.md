@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DANABRI Panel
 
-## Getting Started
+Admin panel built with Next.js App Router, MySQL and Tailwind.
 
-First, run the development server:
+## Quick Start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Short Architecture Guide
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Request flow:
 
-## Learn More
+1. UI pages/components in `src/app/(panel)` and `src/components`
+2. Frontend fetch wrappers in `src/services`
+3. API route handlers in `src/app/api`
+4. Backend/business + SQL access in `src/modules`
+5. DB connection in `src/lib/db.js`
 
-To learn more about Next.js, take a look at the following resources:
+Architecture rule:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `src/app/api/**` must call `src/modules/**` directly.
+- `src/app/api/**` must NOT import `src/services/**`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This avoids API recursion and keeps frontend and backend responsibilities separate.
 
-## Deploy on Vercel
+## Naming Convention (English, Canonical)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Canonical files should use English names.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Examples already migrated:
+
+- `src/modules/clients.service.js` (canonical)
+- `src/modules/suppliers.service.js` (canonical)
+- `src/services/suppliersService.js` (canonical)
+- `src/services/clientsApiService.js` (canonical)
+
+Legacy Spanish filenames are kept as compatibility wrappers to avoid breaking existing imports.
+
+## Layer Guardrails (Point 3)
+
+ESLint now enforces architecture boundaries for API routes.
+
+- Config: `eslint.config.mjs`
+- Rule: `no-restricted-imports` on `src/app/api/**/*`
+- Restriction: importing from `@/services/*` inside API route files
+
+## Domain Naming Unification (Point 4)
+
+Current direction:
+
+- Keep external routes stable for now (no URL breakage).
+- Standardize internal file naming in English.
+- Migrate imports gradually to canonical English files.
+- Keep backward-compatible wrappers until all imports are migrated.
+
+## JavaScript-First Strategy (Point 5)
+
+This codebase is currently JS-first by decision.
+
+- Primary app code is `.js` / `.jsx`.
+- TypeScript is available for incremental adoption where needed.
+- New features can remain in JS unless there is a clear TS requirement.
+
+## PR Checklist
+
+Before opening a PR, verify:
+
+1. API routes import from `src/modules` only.
+2. New files follow canonical English naming.
+3. No route/path regressions in panel navigation.
+4. `pnpm lint` passes.
+5. Affected modules were smoke-tested in UI and API.

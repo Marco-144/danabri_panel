@@ -4,8 +4,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { Box, Boxes, ChevronRight, LayoutDashboard, LogOut, Map, Package, Settings, ShoppingBag, Truck, UserRound, Users, ChartNoAxesGantt } from "lucide-react";
+import {
+  Box, Boxes, ChevronRight, LayoutDashboard, LogOut, Map, Package, Settings, ShoppingBag, ArrowRightLeft, Warehouse, FileInput, Building2,
+  Truck, UserRound, Users, ChartNoAxesGantt, ChartBarStacked, ScanBarcode, BookMarked, ShelvingUnit, Siren, ReceiptText, CircleDollarSign,
+} from "lucide-react";
 import { clearAuthToken, getAuthToken, getAuthUserFromToken, isTokenExpired } from "@/services/auth";
+import { MapPinCheckInside } from "lucide-react";
 /* import path from "node:path"; */
 
 export default function Sidebar() {
@@ -13,6 +17,7 @@ export default function Sidebar() {
   const pathname = usePathname() || "";
   const [almacenesOpen, setAlmacenesOpen] = useState(false);
   const [productosOpen, setProductosOpen] = useState(false);
+  const [clientesOpen, setClientesOpen] = useState(false);
   const [proveedoresOpen, setProveedoresOpen] = useState(false);
   const [currentUserName] = useState(() => {
     const token = getAuthToken();
@@ -33,6 +38,9 @@ export default function Sidebar() {
   // Colapsar secciones automáticamente cuando salgas de ellas
   useEffect(() => {
     startTransition(() => {
+      if (!pathname.startsWith("/clientes")) {
+        setClientesOpen(false);
+      }
       if (!pathname.startsWith("/productos")) {
         setProductosOpen(false);
       }
@@ -46,11 +54,13 @@ export default function Sidebar() {
   }, [pathname]);
 
   // Expandir si está en cualquier subruta o si está abierto manualmente
+  const clientesExpanded = clientesOpen || pathname.startsWith("/clientes");
   const productosExpanded = productosOpen || pathname.startsWith("/productos");
   const almacenesExpanded = almacenesOpen || pathname.startsWith("/almacenes");
   const proveedoresExpanded = proveedoresOpen || pathname.startsWith("/proveedores");
 
   // Seleccionar SOLO si está en la ruta exacta, no en subrutas
+  const clientesSelect = pathname === "/clientes";
   const productosSelected = pathname === "/productos";
   const almacenesSelected = pathname === "/almacenes";
   const proveedoresSelected = pathname === "/proveedores";
@@ -65,7 +75,7 @@ export default function Sidebar() {
     "grid transition-all duration-300 ease-out overflow-hidden";
 
   return (
-    <aside className="w-64 shrink-0 min-h-screen h-auto bg-primary text-white flex flex-col self-stretch">
+    <aside className="w-64 shrink-0 min-h-screen h-auto bg-primary text-white flex flex-col self-stretch shadow-lg">
       {/* Logo */}
       <div className="bg-secondary px-4 py-5 flex justify-center">
         <Image
@@ -128,6 +138,7 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <ChartBarStacked size={16} />
                 Categorias
               </Link>
               <Link
@@ -136,6 +147,7 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <ScanBarcode size={16} />
                 Presentaciones
               </Link>
               <Link
@@ -144,6 +156,7 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <BookMarked size={16} />
                 Marca
               </Link>
               <Link
@@ -152,6 +165,7 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <BookMarked size={16} />
                 Familias
               </Link>
               <Link
@@ -160,6 +174,7 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <BookMarked size={16} />
                 Lineas
               </Link>
             </div>
@@ -195,6 +210,7 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <ShelvingUnit size={16} />
                 Inventario
               </Link>
               <Link
@@ -203,6 +219,7 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <ArrowRightLeft size={16} />
                 Movimientos
               </Link>
               <Link
@@ -211,6 +228,7 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <Siren size={16} />
                 Alertas
               </Link>
               <Link
@@ -219,21 +237,59 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <Warehouse size={16} />
                 Almacenes
               </Link>
             </div>
           </div>
         </div>
 
-        <Link
-          href="/clientes"
-          className={`${linkBaseClass} ${pathname === "/clientes" || pathname.startsWith("/clientes/")
+        <button
+          type="button"
+          onClick={() => setClientesOpen((v) => !v)}
+          className={`${linkBaseClass} justify-between ${clientesSelect
             ? "bg-accent text-white font-medium"
             : "text-gray-300 hover:bg-slidehover hover:text-white"
-            }`}>
-          <Users size={16} />
-          <span>Clientes</span>
-        </Link>
+            }`}
+          aria-expanded={clientesExpanded}
+          aria-controls="submenu-clientes">
+          <span className="flex items-center gap-2">
+            <Users size={16} />
+            <span>Gestion de Clientes</span>
+          </span>
+          <span className={`transition-transform duration-400 ${clientesExpanded ? "rotate-90" : "rotate-0"}`}>
+            <ChevronRight size={16} />
+          </span>
+        </button>
+
+        <div id="submenu-clientes"
+          className={`${collapseBaseClass} ${clientesExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+          <div className="min-h-0">
+            <div className="ml-3 mt-1 flex flex-col gap-1 border-l border-white/10 pl-2">
+              <Link
+                href="/clientes"
+                className={`${subLinkBaseClass} ${pathname === "/clientes"
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <Users size={16} />
+                Lista de Clientes
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className={`${linkBaseClass} justify-between text-gray-500 cursor-not-allowed opacity-70`}
+          role="button"
+          aria-disabled="true"
+          title="Sección temporalmente deshabilitada">
+          <span className="flex items-center gap-2">
+            <Building2 size={16} />
+            <span>Empresas</span>
+          </span>
+          <span className="text-[11px] uppercase tracking-wide">Pronto</span>
+        </div>
 
         <button
           type="button"
@@ -245,8 +301,8 @@ export default function Sidebar() {
           aria-expanded={proveedoresExpanded}
           aria-controls="submenu-proveedores">
           <span className="flex items-center gap-2">
-            <Truck size={16} />
-            <span>Gestión de Proveedores</span>
+            <Box size={16} />
+            <span>Compras</span>
           </span>
           <span className={`transition-transform duration-400 ${proveedoresExpanded ? "rotate-90" : "rotate-0"}`}>
             <ChevronRight size={16} />
@@ -262,6 +318,7 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <Truck size={16} />
                 Lista de Proveedores
               </Link>
               <Link href="/proveedores/ordenes"
@@ -269,7 +326,24 @@ export default function Sidebar() {
                   ? "bg-accent text-white font-semibold"
                   : "text-gray-300 hover:bg-slidehover hover:text-white"
                   }`}>
+                <FileInput size={16} />
                 Órdenes de Compra
+              </Link>
+              <Link href="/proveedores/facturas"
+                className={`${subLinkBaseClass} ${pathname === "/proveedores/facturas" || pathname.startsWith("/proveedores/facturas/")
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <ReceiptText size={16} />
+                Facturas
+              </Link>
+              <Link href="/proveedores/pagos-pendientes"
+                className={`${subLinkBaseClass} ${pathname === "/proveedores/pagos-pendientes" || pathname.startsWith("/proveedores/pagos-pendientes/")
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <CircleDollarSign size={16} />
+                Pagos Pendientes
               </Link>
             </div>
           </div>
@@ -285,17 +359,19 @@ export default function Sidebar() {
           <span>Ventas</span>
         </Link>
 
-        <Link
-          href="/compras"
-          className={`${linkBaseClass} ${pathname === "/compras" || pathname.startsWith("/compras/")
-            ? "bg-accent text-white font-medium"
-            : "text-gray-300 hover:bg-slidehover hover:text-white"
-            }`}>
-          <Box size={16} />
-          <span>Compras</span>
-        </Link>
+        <div
+          className={`${linkBaseClass} justify-between text-gray-500 cursor-not-allowed opacity-70`}
+          role="button"
+          aria-disabled="true"
+          title="Sección temporalmente deshabilitada">
+          <span className="flex items-center gap-2">
+            <Map size={16} />
+            <span>Rutas</span>
+          </span>
+          <span className="text-[11px] uppercase tracking-wide">Pronto</span>
+        </div>
 
-        <Link
+        {/* <Link
           href="/rutas"
           className={`${linkBaseClass} ${pathname === "/rutas" || pathname.startsWith("/rutas/")
             ? "bg-accent text-white font-medium"
@@ -303,7 +379,7 @@ export default function Sidebar() {
             }`}>
           <Map size={16} />
           <span>Rutas</span>
-        </Link>
+        </Link> */}
 
         <Link
           href="/configuracion"
@@ -316,7 +392,7 @@ export default function Sidebar() {
         </Link>
       </nav>
 
-      <div className="border-t border-white/10 p-4 space-y-3">
+      <div className="sticky bottom-0 z-20 border-t border-white/10 p-4 space-y-3 bg-primary/95 backdrop-blur-sm">
         <div className="flex items-center gap-2 rounded-lg bg-slidehover px-3 py-2 text-sm text-white">
           <UserRound size={16} />
           <span className="truncate">{currentUserName}</span>
@@ -325,8 +401,7 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={handleLogout}
-          className="bg-[#b84129] w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2 text-gray-300 hover:bg-[#B82929] hover:text-white"
-        >
+          className="bg-[#b84129] w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2 text-gray-300 hover:bg-[#B82929] hover:text-white">
           <LogOut size={16} />
           <span>Cerrar sesión</span>
         </button>

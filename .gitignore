@@ -40,3 +40,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+Database.md
+
+database/migrations/2026-04-16_ventas_id_almacen.sql
+
+ecosystem.config.js
+
+*.pdf

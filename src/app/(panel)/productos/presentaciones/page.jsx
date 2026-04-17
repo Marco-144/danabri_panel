@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader, Search, Plus, Pencil, Trash2, AlertTriangle, Funnel } from "lucide-react";
 import {
     getProductos,
@@ -18,6 +18,7 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import PageTitle from "@/components/ui/PageTitle";
+import { FilterPopover } from "@/components/ui/FilterPopover";
 import { getAlmacenes } from "@/services/almacenesService";
 import DualRangeFilter from "./DualRangeFilter";
 import PresentacionForm from "./PresentacionForm";
@@ -56,8 +57,6 @@ export default function ProductosPresentacionesPage() {
     const [formModal, setFormModal] = useState({ open: false, mode: "create", item: null });
     const [deleteItem, setDeleteItem] = useState(null);
     const [catalogModalOpen, setCatalogModalOpen] = useState(false);
-    const filtersAnchorRef = useRef(null);
-    const filtersPanelRef = useRef(null);
 
     const loadRows = useCallback(async (idProducto = "") => {
         try {
@@ -76,22 +75,6 @@ export default function ProductosPresentacionesPage() {
         }
         loadRows(selectedProductoId);
     }, [selectedProductoId, loadRows]);
-
-    useEffect(() => {
-        const handlePointerDown = (event) => {
-            const anchor = filtersAnchorRef.current;
-            const panel = filtersPanelRef.current;
-
-            if (anchor?.contains(event.target) || panel?.contains(event.target)) {
-                return;
-            }
-
-            setFiltersOpen(false);
-        };
-
-        document.addEventListener("pointerdown", handlePointerDown);
-        return () => document.removeEventListener("pointerdown", handlePointerDown);
-    }, []);
 
     const loadUbicacionOpciones = useCallback(async () => {
         const [racksData, nivelesData, seccionesData] = await Promise.all([
@@ -247,99 +230,95 @@ export default function ProductosPresentacionesPage() {
                     />
                 </div>
 
-                <div ref={filtersAnchorRef} className="relative flex justify-end md:ml-auto">
-                    <Button variant="ghost" onClick={() => setFiltersOpen((value) => !value)}>
-                        <span className="flex items-center gap-2"><Funnel size={16} /></span>
-                    </Button>
+                <div className="relative flex justify-end md:ml-auto">
+                    <FilterPopover
+                        open={filtersOpen}
+                        onOpenChange={setFiltersOpen}
+                        triggerVariant="ghost"
+                        triggerClassName="px-3 py-2"
+                        triggerContent={<span className="flex items-center gap-2"><Funnel size={16} /></span>}
+                        panelClassName="w-[min(92vw,520px)]"
+                        panelPositionClassName="right-0 top-full"
+                        bodyClassName="max-h-[40vh] overflow-y-auto p-4 space-y-4"
+                        footerClassName="p-4 border-t border-border flex items-center justify-between gap-2"
+                        onClear={resetFilters}
+                        onApply={() => setFiltersOpen(false)}
+                    >
+                        <Select
+                            label="Producto"
+                            value={selectedProductoId}
+                            onChange={(e) => setSelectedProductoId(e.target.value)}
+                            options={productos.map((p) => ({ value: p.id_producto, label: p.nombre }))}
+                            placeholder="Todas las presentaciones"
+                            selectClassName="bg-white"
+                        />
 
-                    {filtersOpen && (
-                        <div
-                            ref={filtersPanelRef}
-                            className="absolute right-0 top-full mt-2 z-30 w-[min(22vw,520px)] rounded-2xl border border-border bg-white shadow-card"
-                        >
-                            <div className="max-h-[40vh] overflow-y-auto p-4 space-y-4">
-                                <Select
-                                    label="Producto"
-                                    value={selectedProductoId}
-                                    onChange={(e) => setSelectedProductoId(e.target.value)}
-                                    options={productos.map((p) => ({ value: p.id_producto, label: p.nombre }))}
-                                    placeholder="Todas las presentaciones"
-                                    selectClassName="bg-white"
-                                />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Select
+                                label="Marca"
+                                value={filterMarca}
+                                onChange={(e) => setFilterMarca(e.target.value)}
+                                options={marcas.map((m) => ({ value: m.id_marca, label: m.nombre }))}
+                                placeholder="--"
+                                selectClassName="bg-white"
+                            />
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Select
-                                        label="Marca"
-                                        value={filterMarca}
-                                        onChange={(e) => setFilterMarca(e.target.value)}
-                                        options={marcas.map((m) => ({ value: m.id_marca, label: m.nombre }))}
-                                        placeholder="--"
-                                        selectClassName="bg-white"
-                                    />
+                            <Select
+                                label="Familia"
+                                value={filterFamilia}
+                                onChange={(e) => setFilterFamilia(e.target.value)}
+                                options={familias.map((f) => ({ value: f.id_familia, label: f.nombre }))}
+                                placeholder="--"
+                                selectClassName="bg-white"
+                            />
 
-                                    <Select
-                                        label="Familia"
-                                        value={filterFamilia}
-                                        onChange={(e) => setFilterFamilia(e.target.value)}
-                                        options={familias.map((f) => ({ value: f.id_familia, label: f.nombre }))}
-                                        placeholder="--"
-                                        selectClassName="bg-white"
-                                    />
+                            <Select
+                                label="Linea"
+                                value={filterLinea}
+                                onChange={(e) => setFilterLinea(e.target.value)}
+                                options={lineas.map((l) => ({ value: l.id_linea, label: l.nombre }))}
+                                placeholder="--"
+                                selectClassName="bg-white"
+                            />
 
-                                    <Select
-                                        label="Linea"
-                                        value={filterLinea}
-                                        onChange={(e) => setFilterLinea(e.target.value)}
-                                        options={lineas.map((l) => ({ value: l.id_linea, label: l.nombre }))}
-                                        placeholder="--"
-                                        selectClassName="bg-white"
-                                    />
+                            <Select
+                                label="Rack"
+                                value={filterRack}
+                                onChange={(e) => setFilterRack(e.target.value)}
+                                options={racks}
+                                placeholder="--"
+                                selectClassName="bg-white"
+                            />
 
-                                    <Select
-                                        label="Rack"
-                                        value={filterRack}
-                                        onChange={(e) => setFilterRack(e.target.value)}
-                                        options={racks}
-                                        placeholder="--"
-                                        selectClassName="bg-white"
-                                    />
+                            <Select
+                                label="Nivel"
+                                value={filterNivel}
+                                onChange={(e) => setFilterNivel(e.target.value)}
+                                options={niveles}
+                                placeholder="--"
+                                selectClassName="bg-white"
+                            />
 
-                                    <Select
-                                        label="Nivel"
-                                        value={filterNivel}
-                                        onChange={(e) => setFilterNivel(e.target.value)}
-                                        options={niveles}
-                                        placeholder="--"
-                                        selectClassName="bg-white"
-                                    />
-
-                                    <Select
-                                        label="Seccion"
-                                        value={filterSeccion}
-                                        onChange={(e) => setFilterSeccion(e.target.value)}
-                                        options={secciones}
-                                        placeholder="--"
-                                        selectClassName="bg-white"
-                                    />
-                                </div>
-
-                                <DualRangeFilter
-                                    label="Costo"
-                                    min={costoMin}
-                                    max={costoMax}
-                                    minLimit={0}
-                                    maxLimit={MAX_COSTO}
-                                    onChangeMin={setCostoMin}
-                                    onChangeMax={setCostoMax}
-                                />
-                            </div>
-
-                            <div className="p-4 border-t border-border flex items-center justify-between gap-2">
-                                <Button variant="outline" onClick={resetFilters}>Limpiar</Button>
-                                <Button variant="primary" onClick={() => setFiltersOpen(false)}>Aplicar</Button>
-                            </div>
+                            <Select
+                                label="Seccion"
+                                value={filterSeccion}
+                                onChange={(e) => setFilterSeccion(e.target.value)}
+                                options={secciones}
+                                placeholder="--"
+                                selectClassName="bg-white"
+                            />
                         </div>
-                    )}
+
+                        <DualRangeFilter
+                            label="Costo"
+                            min={costoMin}
+                            max={costoMax}
+                            minLimit={0}
+                            maxLimit={MAX_COSTO}
+                            onChangeMin={setCostoMin}
+                            onChangeMax={setCostoMax}
+                        />
+                    </FilterPopover>
                 </div>
             </div>
 

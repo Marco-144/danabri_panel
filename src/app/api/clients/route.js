@@ -4,7 +4,7 @@ import {
     getClienteById,
     updateCliente,
     deleteCliente,
-} from '@/modules/clientes.service';
+} from '@/modules/clients.service';
 // Endpoint /api/clients
 // GET: lista clientes (con busqueda opcional)
 // POST: crea un nuevo cliente

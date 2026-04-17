@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Loader, Store, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
-import { getProveedorById } from "@/services/proveedorService";
+import { getProveedorById } from "@/services/suppliersService";
 import Button from "@/components/ui/Button";
 import PageTitle from "@/components/ui/PageTitle";
 import FieldCard from "@/components/ui/FieldCard";
