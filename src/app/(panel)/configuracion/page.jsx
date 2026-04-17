@@ -6,17 +6,29 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import { Pencil, Trash2, Cog, Users, ListTree } from "lucide-react";
+import { Pencil, Trash2, Cog, Users, ListTree, Plus } from "lucide-react";
 import {
     createCatalogoProveedor,
     createCatalogoCliente,
+    createUsuario,
     deleteCatalogoProveedor,
     deleteCatalogoCliente,
+    deleteUsuario,
     getCatalogosProveedores,
     getCatalogosClientes,
     getRoles,
+    updateUsuario,
     getUsuarios,
+    getUsuarioById,
 } from "@/services/configuracionService";
+
+const emptyUsuarioForm = {
+    nombre: "",
+    email: "",
+    password: "",
+    activo: true,
+    roles: [],
+};
 
 export default function ConfiguracionPage() {
     const [search, setSearch] = useState("");
@@ -24,6 +36,11 @@ export default function ConfiguracionPage() {
     const [roles, setRoles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [usuarioModalOpen, setUsuarioModalOpen] = useState(false);
+    const [usuarioEditingId, setUsuarioEditingId] = useState(null);
+    const [usuarioForm, setUsuarioForm] = useState(emptyUsuarioForm);
+    const [usuarioLoading, setUsuarioLoading] = useState(false);
+    const [usuarioError, setUsuarioError] = useState("");
     const [catalogos, setCatalogos] = useState({ giros: [], tipos_cliente: [] });
     const [catalogosProveedor, setCatalogosProveedor] = useState({ giros: [] });
     const [catalogoForm, setCatalogoForm] = useState({
@@ -82,6 +99,126 @@ export default function ConfiguracionPage() {
     useEffect(() => {
         load();
     }, [load]);
+
+    useEffect(() => {
+        setPageUsuarios(1);
+    }, [search]);
+
+    const closeUsuarioModal = () => {
+        setUsuarioModalOpen(false);
+        setUsuarioEditingId(null);
+        setUsuarioForm(emptyUsuarioForm);
+        setUsuarioError("");
+    };
+
+    const openCreateUsuario = () => {
+        setUsuarioEditingId(null);
+        setUsuarioForm(emptyUsuarioForm);
+        setUsuarioError("");
+        setUsuarioModalOpen(true);
+    };
+
+    const openEditUsuario = async (usuario) => {
+        try {
+            setUsuarioLoading(true);
+            setUsuarioError("");
+
+            const detalle = await getUsuarioById(usuario.id_usuario);
+
+            setUsuarioEditingId(detalle.id_usuario);
+            setUsuarioForm({
+                nombre: detalle.nombre || "",
+                email: detalle.email || "",
+                password: "",
+                activo: Boolean(detalle.activo),
+                roles: Array.isArray(detalle.role_ids) ? detalle.role_ids : [],
+            });
+            setUsuarioModalOpen(true);
+        } catch (e) {
+            setUsuarioError(e.message || "No se pudo cargar el usuario");
+            setUsuarioModalOpen(true);
+        } finally {
+            setUsuarioLoading(false);
+        }
+    };
+
+    const toggleUsuarioRole = (idRol) => {
+        setUsuarioForm((prev) => {
+            const exists = prev.roles.includes(idRol);
+            return {
+                ...prev,
+                roles: exists ? prev.roles.filter((roleId) => roleId !== idRol) : [...prev.roles, idRol],
+            };
+        });
+    };
+
+    const handleSubmitUsuario = async () => {
+        const nombre = String(usuarioForm.nombre || "").trim();
+        const email = String(usuarioForm.email || "").trim();
+        const password = String(usuarioForm.password || "").trim();
+
+        if (!nombre) {
+            setUsuarioError("El nombre es requerido");
+            return;
+        }
+
+        if (!email) {
+            setUsuarioError("El email es requerido");
+            return;
+        }
+
+        if (!usuarioEditingId && !password) {
+            setUsuarioError("La contraseña es requerida para crear el usuario");
+            return;
+        }
+
+        try {
+            setUsuarioLoading(true);
+            setUsuarioError("");
+
+            const payload = {
+                nombre,
+                email,
+                activo: Boolean(usuarioForm.activo),
+                roles: usuarioForm.roles,
+            };
+
+            if (password) {
+                payload.password = password;
+            }
+
+            if (usuarioEditingId) {
+                payload.id_usuario = usuarioEditingId;
+                await updateUsuario(payload);
+            } else {
+                await createUsuario(payload);
+            }
+
+            closeUsuarioModal();
+            await load();
+        } catch (e) {
+            setUsuarioError(e.message || "No se pudo guardar el usuario");
+        } finally {
+            setUsuarioLoading(false);
+        }
+    };
+
+    const handleDeleteUsuario = async (usuario) => {
+        const confirmar = window.confirm(`¿Eliminar al usuario ${usuario.nombre}?`);
+        if (!confirmar) {
+            return;
+        }
+
+        try {
+            setUsuarioLoading(true);
+            await deleteUsuario({ id_usuario: usuario.id_usuario });
+            await load();
+        } catch (e) {
+            setUsuarioError(e.message || "No se pudo eliminar el usuario");
+        } finally {
+            setUsuarioLoading(false);
+        }
+    };
 
     const handleAddGiro = async () => {
         if (!catalogoForm.giro.trim()) {
@@ -246,9 +383,15 @@ export default function ConfiguracionPage() {
                         <p className="text-sm text-muted mb-2">Buscar Usuario</p>
                         <Input className="w-[360px] mb-6" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre o email" />
 
-                        <div className="flex items-center gap-2">
-                            <Users size={22} className="-translate-y-1.5" />
-                            <h3 className="font-semibold text-primary mb-3">Usuarios</h3>
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                            <div className="flex items-center gap-2">
+                                <Users size={22} className="-translate-y-1.5" />
+                                <h3 className="font-semibold text-primary">Usuarios</h3>
+                            </div>
+                            <Button onClick={openCreateUsuario}>
+                                <Plus size={16} />
+                                Agregar usuario
+                            </Button>
                         </div>
 
                         <div className="overflow-x-auto rounded-xl border border-border">
@@ -259,19 +402,30 @@ export default function ConfiguracionPage() {
                                         <th className="text-left p-3">Email</th>
                                         <th className="text-left p-3">Rol</th>
                                         <th className="text-left p-3">Estado</th>
+                                        <th className="text-left p-3">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={4} className="p-6 text-center text-muted">Cargando...</td></tr>
+                                        <tr><td colSpan={5} className="p-6 text-center text-muted">Cargando...</td></tr>
                                     ) : usuarios.slice((pageUsuarios - 1) * ITEMS_PER_PAGE_USUARIOS, pageUsuarios * ITEMS_PER_PAGE_USUARIOS).length === 0 ? (
-                                        <tr><td colSpan={4} className="p-6 text-center text-muted">Sin usuarios</td></tr>
+                                        <tr><td colSpan={5} className="p-6 text-center text-muted">Sin usuarios</td></tr>
                                     ) : usuarios.slice((pageUsuarios - 1) * ITEMS_PER_PAGE_USUARIOS, pageUsuarios * ITEMS_PER_PAGE_USUARIOS).map((u) => (
                                         <tr key={u.id_usuario} className="border-t border-border hover:bg-background/50">
                                             <td className="p-3">{u.nombre}</td>
                                             <td className="p-3 text-xs">{u.email}</td>
                                             <td className="p-3">{u.roles || "-"}</td>
                                             <td className="p-3">{u.activo ? "Activo" : "Inactivo"}</td>
+                                            <td className="p-3">
+                                                <div className="flex gap-2">
+                                                    <Button variant="outline" size="sm" onClick={() => openEditUsuario(u)} disabled={usuarioLoading}>
+                                                        <Pencil size={16} />
+                                                    </Button>
+                                                    <Button variant="danger" size="sm" onClick={() => handleDeleteUsuario(u)} disabled={usuarioLoading}>
+                                                        <Trash2 size={16} />
+                                                    </Button>
+                                                </div>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -502,6 +656,78 @@ export default function ConfiguracionPage() {
                     </div>
                 </Card>
             </div>
+
+            {usuarioModalOpen && (
+                <div className="fixed inset-0 z-50 bg-primary/40 flex items-center justify-center p-4">
+                    <Card className="p-6 w-full max-w-2xl">
+                        <h3 className="text-lg font-semibold text-primary mb-4">
+                            {usuarioEditingId ? "Editar usuario" : "Agregar usuario"}
+                        </h3>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                            <Input
+                                label="Nombre"
+                                value={usuarioForm.nombre}
+                                onChange={(e) => setUsuarioForm((prev) => ({ ...prev, nombre: e.target.value }))}
+                                inputClassName="py-2"
+                            />
+                            <Input
+                                label="Email"
+                                type="email"
+                                value={usuarioForm.email}
+                                onChange={(e) => setUsuarioForm((prev) => ({ ...prev, email: e.target.value }))}
+                                inputClassName="py-2"
+                            />
+                            <Input
+                                label={usuarioEditingId ? "Contraseña nueva" : "Contraseña"}
+                                type="password"
+                                value={usuarioForm.password}
+                                onChange={(e) => setUsuarioForm((prev) => ({ ...prev, password: e.target.value }))}
+                                inputClassName="py-2"
+                            />
+                            <Select
+                                label="Estado"
+                                value={usuarioForm.activo ? "1" : "0"}
+                                onChange={(e) => setUsuarioForm((prev) => ({ ...prev, activo: e.target.value === "1" }))}
+                                options={[
+                                    { value: "1", label: "Activo" },
+                                    { value: "0", label: "Inactivo" },
+                                ]}
+                            />
+                        </div>
+
+                        <div className="mb-4">
+                            <p className="text-sm text-muted mb-2">Roles</p>
+                            <div className="max-h-48 overflow-y-auto rounded-lg border border-border p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {roles.map((rol) => (
+                                    <label key={rol.id_rol} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-background/50 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={usuarioForm.roles.includes(rol.id_rol)}
+                                            onChange={() => toggleUsuarioRole(rol.id_rol)}
+                                        />
+                                        <span>{rol.nombre}</span>
+                                    </label>
+                                ))}
+                                {!roles.length ? <p className="text-xs text-muted">Sin roles disponibles</p> : null}
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-muted mb-4">
+                            {usuarioEditingId ? "Deja la contraseña vacía para conservar la actual." : "La contraseña se guardará hasheada en la base de datos."}
+                        </p>
+
+                        {usuarioError ? <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">{usuarioError}</div> : null}
+
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="outline" onClick={closeUsuarioModal} disabled={usuarioLoading}>Cancelar</Button>
+                            <Button variant="primary" onClick={handleSubmitUsuario} disabled={usuarioLoading}>
+                                {usuarioLoading ? "Guardando..." : "Guardar"}
+                            </Button>
+                        </div>
+                    </Card>
+                </div>
+            )}
 
             {catalogoError ? <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{catalogoError}</div> : null}
 
