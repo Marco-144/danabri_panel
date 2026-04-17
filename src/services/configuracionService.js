@@ -14,6 +14,40 @@ export async function getUsuarios(search = "") {
     return parseOrThrow(await fetch(url));
 }
 
+export async function getUsuarioById(id) {
+    return parseOrThrow(await fetch(`${API_USUARIOS}?id=${encodeURIComponent(id)}`));
+}
+
+export async function createUsuario(payload) {
+    return parseOrThrow(
+        await fetch(API_USUARIOS, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        })
+    );
+}
+
+export async function updateUsuario(payload) {
+    return parseOrThrow(
+        await fetch(API_USUARIOS, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        })
+    );
+}
+
+export async function deleteUsuario(payload) {
+    return parseOrThrow(
+        await fetch(API_USUARIOS, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        })
+    );
+}
+
 export async function getRoles() {
     return parseOrThrow(await fetch(API_ROLES));
 }
