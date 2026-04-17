@@ -1,4 +1,5 @@
 const TOKEN_KEY = "token";
+const TOKEN_COOKIE = "auth_token";
 
 function decodeJwtPayload(token) {
     try {
@@ -6,11 +7,25 @@ function decodeJwtPayload(token) {
         if (!payloadBase64) return null;
 
         const normalized = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
-        const decoded = JSON.parse(atob(normalized));
+        const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+        const decoded = JSON.parse(atob(padded));
         return decoded;
     } catch {
         return null;
     }
+}
+
+function syncAuthCookie(token) {
+    if (typeof document === "undefined") return;
+
+    if (!token) {
+        document.cookie = `${TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+        return;
+    }
+
+    const expirationMs = getTokenExpirationMs(token);
+    const maxAgeSeconds = expirationMs ? Math.max(0, Math.floor((expirationMs - Date.now()) / 1000)) : 60 * 60 * 8;
+    document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`;
 }
 
 export function getAuthToken() {
@@ -31,11 +46,13 @@ export function getAuthUserFromToken(token) {
 export function saveAuthToken(token) {
     if (typeof window === "undefined") return;
     localStorage.setItem(TOKEN_KEY, token);
+    syncAuthCookie(token);
 }
 
 export function clearAuthToken() {
     if (typeof window === "undefined") return;
     localStorage.removeItem(TOKEN_KEY);
+    syncAuthCookie(null);
 }
 
 export function logout() {

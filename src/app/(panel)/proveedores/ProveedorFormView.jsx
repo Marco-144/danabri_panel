@@ -9,7 +9,7 @@ import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import PageTitle from "@/components/ui/PageTitle";
-import { createProveedor, updateProveedor } from "@/services/proveedorService";
+import { createProveedor, updateProveedor } from "@/services/suppliersService";
 import { getCatalogosProveedores } from "@/services/configuracionService";
 
 const METODOS_PAGO_FALLBACK = [
@@ -164,7 +164,7 @@ export default function ProveedorFormView({ data = {}, isEdit = false }) {
             <PageTitle
                 breadcrumb={`Proveedores / ${isEdit ? "Editar" : "Crear"}`}
                 title={isEdit ? "Editar Proveedor" : "Agregar Proveedor"}
-                icon={Truck}
+                icon={<Truck />}
                 actions={(
                     <Link href="/proveedores">
                         <Button variant="primary" size="lg" className="rounded-xl shadow-sm">

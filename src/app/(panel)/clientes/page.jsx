@@ -12,6 +12,7 @@ import { getCatalogosClientes } from "@/services/configuracionService";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import PageTitle from "@/components/ui/PageTitle";
+import { FilterPopover, FilterChip } from "@/components/ui/FilterPopover";
 
 import AgregarClientesView from "./AgregarClientesView";
 import EditarClientes from "./EditarClientes";
@@ -429,86 +430,66 @@ function ClientesFiltersInline({ value, giros = [], tiposCliente = [], onApply, 
 
   return (
     <div className="flex flex-col md:flex-row mb-4 gap-3 md:items-center translate-y-2">
-      <div className="relative inline-block">
-        <Button
-          onClick={() => {
+      <FilterPopover
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) {
             setDraft(value || { tipo_cliente: "all", giro: "all", activo: "all" });
-            setOpen(!open);
-          }}
-          variant="outline"
-          className="bg-white font-medium pl-10 pr-10 py-2.5 rounded-full min-w-[210px] text-left"
-        >
-          Filtrar por...
-        </Button>
-
-        {open && (
-          <div className="absolute z-20 mt-2 w-[290px] rounded-2xl border border-border bg-white shadow-card p-4">
-            <div className="mb-4">
-              <p className="text-xs text-muted mb-2">Tipo cliente</p>
-              <div className="flex gap-2 flex-wrap">
-                <FilterBtn active={draft.tipo_cliente === "all"} onClick={() => setDraft((prev) => ({ ...prev, tipo_cliente: "all" }))}>Todos</FilterBtn>
-                {tiposCliente.map((tipo) => {
-                  const valueTipo = tipo.toLowerCase();
-                  return (
-                    <FilterBtn
-                      key={tipo}
-                      active={draft.tipo_cliente === valueTipo}
-                      onClick={() => setDraft((prev) => ({ ...prev, tipo_cliente: valueTipo }))}>
-                      {tipo}
-                    </FilterBtn>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mb-2">
-              <p className="text-xs text-muted mb-2">Giro</p>
-              <div className="flex gap-2 flex-wrap">
-                <FilterBtn active={draft.giro === "all"} onClick={() => setDraft((prev) => ({ ...prev, giro: "all" }))}>Todos</FilterBtn>
-                {giros.map((giro) => {
-                  const valueGiro = giro.toLowerCase();
-                  return (
-                    <FilterBtn
-                      key={giro}
-                      active={draft.giro === valueGiro}
-                      onClick={() => setDraft((prev) => ({ ...prev, giro: valueGiro }))}>
-                      {giro}
-                    </FilterBtn>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mb-2">
-              <p className="text-xs text-muted mb-2">Estado</p>
-              <div className="flex gap-2">
-                <FilterBtn active={draft.activo === "all"} onClick={() => setDraft((prev) => ({ ...prev, activo: "all" }))}>Todos</FilterBtn>
-                <FilterBtn active={draft.activo === "activo"} onClick={() => setDraft((prev) => ({ ...prev, activo: "activo" }))}>Activo</FilterBtn>
-                <FilterBtn active={draft.activo === "inactivo"} onClick={() => setDraft((prev) => ({ ...prev, activo: "inactivo" }))}>Inactivo</FilterBtn>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t flex justify-between">
-              <Button variant="ghost" size="sm" className="text-sm text-muted" onClick={handleClear}>Limpiar</Button>
-              <Button variant="ghost" size="sm" className="text-sm" onClick={handleApply}>Aplicar</Button>
-            </div>
+          }
+          setOpen(nextOpen);
+        }}
+        panelClassName="w-[290px]"
+        onApply={handleApply}
+        onClear={handleClear}
+      >
+        <div>
+          <p className="text-xs text-muted mb-2">Tipo cliente</p>
+          <div className="flex gap-2 flex-wrap">
+            <FilterChip active={draft.tipo_cliente === "all"} onClick={() => setDraft((prev) => ({ ...prev, tipo_cliente: "all" }))}>Todos</FilterChip>
+            {tiposCliente.map((tipo) => {
+              const valueTipo = tipo.toLowerCase();
+              return (
+                <FilterChip
+                  key={tipo}
+                  active={draft.tipo_cliente === valueTipo}
+                  onClick={() => setDraft((prev) => ({ ...prev, tipo_cliente: valueTipo }))}
+                >
+                  {tipo}
+                </FilterChip>
+              );
+            })}
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
+        </div>
 
-function FilterBtn({ children, active, onClick }) {
-  return (
-    <Button
-      onClick={onClick}
-      variant={active ? "tabActive" : "tabIdle"}
-      size="sm"
-      className="rounded-full border"
-    >
-      {children}
-    </Button>
+        <div>
+          <p className="text-xs text-muted mb-2">Giro</p>
+          <div className="flex gap-2 flex-wrap">
+            <FilterChip active={draft.giro === "all"} onClick={() => setDraft((prev) => ({ ...prev, giro: "all" }))}>Todos</FilterChip>
+            {giros.map((giro) => {
+              const valueGiro = giro.toLowerCase();
+              return (
+                <FilterChip
+                  key={giro}
+                  active={draft.giro === valueGiro}
+                  onClick={() => setDraft((prev) => ({ ...prev, giro: valueGiro }))}
+                >
+                  {giro}
+                </FilterChip>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs text-muted mb-2">Estado</p>
+          <div className="flex gap-2">
+            <FilterChip active={draft.activo === "all"} onClick={() => setDraft((prev) => ({ ...prev, activo: "all" }))}>Todos</FilterChip>
+            <FilterChip active={draft.activo === "activo"} onClick={() => setDraft((prev) => ({ ...prev, activo: "activo" }))}>Activo</FilterChip>
+            <FilterChip active={draft.activo === "inactivo"} onClick={() => setDraft((prev) => ({ ...prev, activo: "inactivo" }))}>Inactivo</FilterChip>
+          </div>
+        </div>
+      </FilterPopover>
+    </div>
   );
 }
 

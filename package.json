@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "@react-pdf/renderer": "4.4.1",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.7.0",
     "mysql2": "^3.20.0",
@@ -25,6 +26,7 @@
     "autoprefixer": "^10.4.27",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "pdfx-cli": "^0.6.1",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
     "typescript": "^5"

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Loader } from "lucide-react";
 import ProveedorFormView from "./ProveedorFormView";
-import { getProveedorById } from "@/services/proveedorService";
+import { getProveedorById } from "@/services/suppliersService";
 
 export default function EditarProveedor({ id: propId }) {
     const params = useParams();
