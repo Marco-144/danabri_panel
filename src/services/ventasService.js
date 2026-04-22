@@ -15,6 +15,10 @@ export async function getVentaById(id) {
     return parseOrThrow(await fetch(`${API_VENTAS}?id=${encodeURIComponent(id)}`));
 }
 
+export async function getVentaTicketById(id) {
+    return parseOrThrow(await fetch(`${API_VENTAS}?id=${encodeURIComponent(id)}&ticket=1`));
+}
+
 export async function getVentasCatalog({ id_almacen, search = "" } = {}) {
     const params = new URLSearchParams();
     params.set("catalog", "1");

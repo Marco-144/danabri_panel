@@ -21,6 +21,7 @@ import {
     getUsuarios,
     getUsuarioById,
 } from "@/services/configuracionService";
+import { Pen } from "lucide-react";
 
 const emptyUsuarioForm = {
     nombre: "",
@@ -507,7 +508,10 @@ export default function ConfiguracionPage() {
                             value={catalogoForm.giro}
                             onChange={(e) => setCatalogoForm((prev) => ({ ...prev, giro: e.target.value }))}
                         />
-                        <Button onClick={handleAddGiro} disabled={catalogoLoading}>Agregar</Button>
+                        <Button onClick={handleAddGiro} disabled={catalogoLoading}>
+                            <Plus size={16} className="mr-2" />
+                            Agregar
+                        </Button>
                     </div>
 
                     <div className="mb-3">
@@ -531,7 +535,7 @@ export default function ConfiguracionPage() {
                                             <Button variant="outline" size="sm" onClick={() => handleEditGiro(giro)} disabled={catalogoLoading}>
                                                 <Pencil size={16} className="hover:text-yellow-600" />
                                             </Button>
-                                            <Button variant="outline" size="sm" onClick={() => handleDeleteGiro(giro.id_giro)} disabled={catalogoLoading}>
+                                            <Button variant="danger" size="sm" onClick={() => handleDeleteGiro(giro.id_giro)} disabled={catalogoLoading}>
                                                 <Trash2 size={16} className="hover:text-red-600" />
                                             </Button>
                                         </div>
@@ -572,7 +576,10 @@ export default function ConfiguracionPage() {
                         />
                     </div>
 
-                    <Button onClick={handleAddTipoCliente} disabled={catalogoLoading} className="mb-4">Agregar tipo de cliente</Button>
+                    <Button onClick={handleAddTipoCliente} disabled={catalogoLoading} className="mb-4">
+                        <Plus size={16} className="mr-2" />
+                        Agregar tipo de cliente
+                    </Button>
 
                     <div className="mb-3">
                         <Input
@@ -593,10 +600,10 @@ export default function ConfiguracionPage() {
                                         <span className="truncate">{tipo.nombre} (Precio {tipo.nivel_precio})</span>
                                         <div className="flex gap-1">
                                             <Button variant="outline" size="sm" onClick={() => handleEditTipoCliente(tipo)} disabled={catalogoLoading}>
-                                                Editar
+                                                <Pencil size={16} className="hover:text-yellow-600" />
                                             </Button>
-                                            <Button variant="outline" size="sm" onClick={() => handleDeleteTipoCliente(tipo.id_tipo_cliente)} disabled={catalogoLoading}>
-                                                Eliminar
+                                            <Button variant="danger" size="sm" onClick={() => handleDeleteTipoCliente(tipo.id_tipo_cliente)} disabled={catalogoLoading}>
+                                                <Trash2 size={16} className="hover:text-red-600" />
                                             </Button>
                                         </div>
                                     </li>
@@ -623,7 +630,10 @@ export default function ConfiguracionPage() {
                             value={catalogoForm.proveedor_giro}
                             onChange={(e) => setCatalogoForm((prev) => ({ ...prev, proveedor_giro: e.target.value }))}
                         />
-                        <Button onClick={() => handleAddCatalogoProveedor("giro", "proveedor_giro", "El giro del proveedor es requerido")} disabled={catalogoLoading}>Agregar</Button>
+                        <Button onClick={() => handleAddCatalogoProveedor("giro", "proveedor_giro", "El giro del proveedor es requerido")} disabled={catalogoLoading}>
+                            <Plus size={16} className="mr-2" />
+                            Agregar
+                        </Button>
                     </div>
 
                     <div className="mb-3">
@@ -644,8 +654,12 @@ export default function ConfiguracionPage() {
                                     <li key={item.id_giro_proveedor} className="p-2 flex items-center justify-between gap-2 hover:bg-background/50">
                                         <span className="truncate">{item.nombre}</span>
                                         <div className="flex gap-1">
-                                            <Button variant="outline" size="sm" onClick={() => handleEditGirosProveedor(item)} disabled={catalogoLoading}>Editar</Button>
-                                            <Button variant="outline" size="sm" onClick={() => handleDeleteCatalogoProveedor("giro", item.id_giro_proveedor)} disabled={catalogoLoading}>Eliminar</Button>
+                                            <Button variant="outline" size="sm" onClick={() => handleEditGirosProveedor(item)} disabled={catalogoLoading}>
+                                                <Pencil size={16} className="hover:text-yellow-600" />
+                                            </Button>
+                                            <Button variant="danger" size="sm" onClick={() => handleDeleteCatalogoProveedor("giro", item.id_giro_proveedor)} disabled={catalogoLoading}>
+                                                <Trash2 size={16} className="hover:text-red-600" />
+                                            </Button>
                                         </div>
                                     </li>
                                 ))}

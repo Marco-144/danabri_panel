@@ -7,6 +7,7 @@ const variants = {
     accent: "bg-accent text-white hover:opacity-90",
     outline: "border border-border text-primary hover:bg-background",
     ghost: "text-primary hover:bg-[#dfdfdf]",
+    warning : "bg-yellow-500 text-white hover:bg-yellow-600",
     danger: "bg-red-600 text-white hover:bg-red-700",
     activo: "bg-activo text-white hover:bg-hoveractivo",
     inactivo: "bg-inactivo text-white hover:bg-hoverinactivo",

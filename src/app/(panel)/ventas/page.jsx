@@ -3,13 +3,11 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ChevronLeft, Eye, Loader, Pencil, Plus, Search, ShoppingCart, Trash2 } from "lucide-react";
+import { Eye, Loader, Search, ShoppingCart } from "lucide-react";
 import PageTitle from "@/components/ui/PageTitle";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
-import { deleteVenta, getVentas } from "@/services/ventasService";
-
-import VentaFormView from "./VentaFormView";
+import { getVentas } from "@/services/ventasService";
 import VentaDetalleView from "./VentaDetalleView";
 
 function fmtMoney(value) {
@@ -28,14 +26,6 @@ function VentasPageContent() {
     const searchParams = useSearchParams();
     const mode = searchParams.get("mode");
     const selectedId = searchParams.get("id");
-
-    if (mode === "add") {
-        return <VentaFormView />;
-    }
-
-    if (mode === "edit" && selectedId) {
-        return <VentaFormView id={selectedId} />;
-    }
 
     if (mode === "view" && selectedId) {
         return <VentaDetalleView id={selectedId} />;
@@ -67,29 +57,12 @@ function VentasListView() {
         load();
     }, [load]);
 
-    async function handleDelete(id) {
-        const ok = window.confirm("Seguro que deseas eliminar esta venta? Se regresara el stock al inventario.");
-        if (!ok) return;
-
-        try {
-            await deleteVenta(id);
-            await load();
-        } catch (e) {
-            setError(e.message || "No se pudo eliminar la venta");
-        }
-    }
-
     return (
         <div className="space-y-4">
             <PageTitle
-                title="Ventas"
-                subtitle="Historial de ventas realizadas"
+                title="Ventas POS"
+                subtitle="Consulta del historial y reimpresión de tickets"
                 icon={<ShoppingCart size={22} />}
-                actions={
-                    <Link href="/ventas?mode=add">
-                        <Button className="gap-2"><Plus size={16} /> Nueva venta</Button>
-                    </Link>
-                }
             />
 
             {error ? <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div> : null}
@@ -99,7 +72,7 @@ function VentasListView() {
                     <Search className="absolute left-3 top-1/2 translate-y-1/5 w-4 h-4 text-muted" />
                     <Input
                         label="Buscar"
-                        placeholder="Folio, usuario, almacén o método"
+                        placeholder="Folio, usuario, almacén o método de pago"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         inputClassName="pl-10"
@@ -109,7 +82,7 @@ function VentasListView() {
             </div>
 
             <div className="bg-white rounded-2xl shadow-card border border-border overflow-x-auto">
-                <table className="w-full text-sm min-w-[1100px]">
+                <table className="w-full text-sm min-w-[980px]">
                     <thead className="bg-background text-primary">
                         <tr>
                             <th className="text-left p-3">Folio</th>
@@ -119,7 +92,7 @@ function VentasListView() {
                             <th className="text-left p-3">Estado</th>
                             <th className="text-right p-3">Total</th>
                             <th className="text-left p-3">Fecha</th>
-                            <th className="text-center p-3">Acciones</th>
+                            <th className="text-center p-3">Consultar</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -137,16 +110,10 @@ function VentasListView() {
                                 <td className="p-3 text-right font-semibold text-primary">{fmtMoney(r.total)}</td>
                                 <td className="p-3">{new Date(r.created_at).toLocaleString("es-MX")}</td>
                                 <td className="p-3">
-                                    <div className="flex justify-center gap-2">
+                                    <div className="flex justify-center">
                                         <Link href={`/ventas?mode=view&id=${r.id_venta}`}>
-                                            <Button variant="ghost" size="sm"><Eye size={14} /></Button>
+                                            <Button variant="ghost" size="sm" className="gap-2"><Eye size={14} /> Ver ticket</Button>
                                         </Link>
-                                        <Link href={`/ventas?mode=edit&id=${r.id_venta}`}>
-                                            <Button variant="ghost" size="sm"><Pencil size={14} /></Button>
-                                        </Link>
-                                        <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id_venta)}>
-                                            <Trash2 size={14} />
-                                        </Button>
                                     </div>
                                 </td>
                             </tr>

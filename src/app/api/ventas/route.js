@@ -1,4 +1,4 @@
-import { getVentas, getVentasCatalog, getVentaById, createVenta, updateVenta, deleteVenta } from "@/modules/ventas.service";
+import { getVentas, getVentasCatalog, getVentaById, getVentaTicketById, createVenta, updateVenta, deleteVenta } from "@/modules/ventas.service";
 import { verifyToken } from "@/modules/auth.utils";
 
 function getAuthUserId(req) {
@@ -19,6 +19,7 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const id = searchParams.get("id");
         const catalog = searchParams.get("catalog") === "1";
+        const ticket = searchParams.get("ticket") === "1";
         const search = searchParams.get("search") || "";
         const id_almacen = searchParams.get("id_almacen") || null;
 
@@ -27,6 +28,9 @@ export async function GET(req) {
         }
 
         if (id) {
+            if (ticket) {
+                return Response.json(await getVentaTicketById(id));
+            }
             return Response.json(await getVentaById(id));
         }
 
