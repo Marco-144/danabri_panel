@@ -186,7 +186,7 @@ export default function FacturaFormView({ idOrdenCompra = "" }) {
                 })),
             });
 
-            router.replace(`/proveedores/facturas/${result.id_factura}`);
+            router.replace(`/proveedores/facturas?mode=detalle&id=${result.id_factura}`);
         } catch (err) {
             setError(err.message || "No se pudo crear la factura");
         } finally {

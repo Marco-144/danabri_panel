@@ -134,6 +134,40 @@ async function revertirMovimientosVenta(conn, { id_almacen, detalles, id_origen 
   }
 }
 
+function toNumberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickFirstValue(row, keys) {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== "") {
+      return row[key];
+    }
+  }
+  return null;
+}
+
+function pickFirstNumber(row, keys) {
+  for (const key of keys) {
+    const n = toNumberOrNull(row[key]);
+    if (n !== null) return n;
+  }
+  return null;
+}
+
+async function getPagosVentasByVentaId(idVenta) {
+  try {
+    const [rows] = await db.execute("SELECT * FROM pagos_ventas WHERE id_venta = ?", [idVenta]);
+    return rows;
+  } catch (error) {
+    if (error?.code === "ER_NO_SUCH_TABLE") {
+      return [];
+    }
+    throw error;
+  }
+}
+
 export async function getVentas({ search = "" } = {}) {
   let sql = `
   SELECT
@@ -253,6 +287,55 @@ export async function getVentaById(id) {
   );
 
   return { ...venta, detalles };
+}
+
+export async function getVentaTicketById(id) {
+  const venta = await getVentaById(id);
+  const pagosRaw = await getPagosVentasByVentaId(venta.id_venta);
+
+  const pagos = pagosRaw.map((row) => {
+    const monto = pickFirstNumber(row, ["monto", "monto_pagado", "monto_pago", "pago", "importe", "total_pagado"]) ?? 0;
+    const montoRecibido = pickFirstNumber(row, ["monto_recibido", "pagado_con", "pago_recibido", "efectivo_recibido"]) ?? null;
+    const cambio = pickFirstNumber(row, ["cambio", "monto_cambio"]) ?? null;
+
+    return {
+      metodo_pago: pickFirstValue(row, ["metodo_pago", "forma_pago", "metodo"]) || venta.metodo_pago || null,
+      referencia: pickFirstValue(row, ["referencia", "referencia_pago", "folio_referencia"]) || null,
+      fecha_pago: pickFirstValue(row, ["created_at", "fecha_pago", "fecha"]) || null,
+      monto,
+      monto_recibido: montoRecibido,
+      cambio,
+    };
+  });
+
+  const subtotal = venta.detalles.reduce((acc, item) => acc + Number(item.subtotal || 0), 0);
+  const iva = toNumberOrNull(venta.iva) ?? toNumberOrNull(venta.impuesto) ?? 0;
+  const total = toNumberOrNull(venta.total) ?? Math.round((subtotal + iva) * 100) / 100;
+  const primerPago = pagos[0] || null;
+  const montoPagado = pagos.reduce((acc, item) => acc + Number(item.monto || 0), 0);
+
+  const pago =
+    (primerPago && (primerPago.monto_recibido ?? primerPago.monto))
+    ?? (montoPagado > 0 ? montoPagado : total);
+
+  const cambio =
+    (primerPago && primerPago.cambio !== null)
+      ? primerPago.cambio
+      : Math.max(Math.round((pago - total) * 100) / 100, 0);
+
+  return {
+    ...venta,
+    subtotal,
+    iva,
+    total,
+    pagos,
+    ticket: {
+      metodo_pago: primerPago?.metodo_pago || venta.metodo_pago || null,
+      pago,
+      cambio,
+      total_pagado: montoPagado,
+    },
+  };
 }
 
 export async function createVenta(data, context = {}) {

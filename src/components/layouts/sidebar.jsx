@@ -7,9 +7,8 @@ import { useEffect, useState, useTransition } from "react";
 import {
   Box, Boxes, ChevronRight, LayoutDashboard, LogOut, Map, Package, Settings, ShoppingBag, ArrowRightLeft, Warehouse, FileInput, Building2,
   Truck, UserRound, Users, ChartNoAxesGantt, ChartBarStacked, ScanBarcode, BookMarked, ShelvingUnit, Siren, ReceiptText, CircleDollarSign,
-} from "lucide-react";
+  FileText, Combine } from "lucide-react";
 import { clearAuthToken, getAuthToken, getAuthUserFromToken, isTokenExpired } from "@/services/auth";
-import { MapPinCheckInside } from "lucide-react";
 /* import path from "node:path"; */
 
 export default function Sidebar() {
@@ -19,6 +18,7 @@ export default function Sidebar() {
   const [productosOpen, setProductosOpen] = useState(false);
   const [clientesOpen, setClientesOpen] = useState(false);
   const [proveedoresOpen, setProveedoresOpen] = useState(false);
+  const [empresasOpen, setEmpresasOpen] = useState(false);
   const [currentUserName] = useState(() => {
     const token = getAuthToken();
     if (!token || isTokenExpired(token)) {
@@ -50,6 +50,9 @@ export default function Sidebar() {
       if (!pathname.startsWith("/proveedores")) {
         setProveedoresOpen(false);
       }
+      if (!pathname.startsWith("/empresas")) {
+        setEmpresasOpen(false);
+      }
     });
   }, [pathname]);
 
@@ -58,12 +61,14 @@ export default function Sidebar() {
   const productosExpanded = productosOpen || pathname.startsWith("/productos");
   const almacenesExpanded = almacenesOpen || pathname.startsWith("/almacenes");
   const proveedoresExpanded = proveedoresOpen || pathname.startsWith("/proveedores");
+  const empresasExpanded = empresasOpen || pathname.startsWith("/empresas");
 
   // Seleccionar SOLO si está en la ruta exacta, no en subrutas
   const clientesSelect = pathname === "/clientes";
   const productosSelected = pathname === "/productos";
   const almacenesSelected = pathname === "/almacenes";
   const proveedoresSelected = pathname === "/proveedores";
+  const empresasSelected = pathname === "/empresas";
 
   const linkBaseClass =
     "w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2";
@@ -279,16 +284,66 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <div
-          className={`${linkBaseClass} justify-between text-gray-500 cursor-not-allowed opacity-70`}
-          role="button"
-          aria-disabled="true"
-          title="Sección temporalmente deshabilitada">
+        <button
+          type="button"
+          onClick={() => setEmpresasOpen((v) => !v)}
+          className={`${linkBaseClass} justify-between ${empresasSelected
+            ? "bg-accent text-white font-medium"
+            : "text-gray-300 hover:bg-slidehover hover:text-white"
+            }`}
+          aria-expanded={empresasExpanded}
+          aria-controls="submenu-empresas">
           <span className="flex items-center gap-2">
             <Building2 size={16} />
             <span>Empresas</span>
           </span>
-          <span className="text-[11px] uppercase tracking-wide">Pronto</span>
+          <span className={`transition-transform duration-400 ${empresasExpanded ? "rotate-90" : "rotate-0"}`}>
+            <ChevronRight size={16} />
+          </span>
+        </button>
+
+        <div id="submenu-empresas"
+          className={`${collapseBaseClass} ${empresasExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+          <div className="min-h-0">
+            <div className="ml-3 mt-1 flex flex-col gap-1 border-l border-white/10 pl-2">
+              <Link
+                href="/empresas"
+                className={`${subLinkBaseClass} ${pathname === "/empresas"
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <Building2 size={16} />
+                Lista de Empresas
+              </Link>
+              <Link
+                href="/empresas/cotizaciones"
+                className={`${subLinkBaseClass} ${pathname === "/empresas/cotizaciones" || pathname.startsWith("/empresas/cotizaciones/")
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <FileText size={16} />
+                Cotizaciones de Empresas
+              </Link>
+              <Link
+                href="/empresas/remisiones"
+                className={`${subLinkBaseClass} ${pathname === "/empresas/remisiones" || pathname.startsWith("/empresas/remisiones/")
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <Combine size={16} />
+                Remisiones de Empresas
+              </Link>
+              <Link
+                href="/empresas/abonos"
+                className={`${subLinkBaseClass} ${pathname === "/empresas/abonos" || pathname.startsWith("/empresas/abonos/")
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <CircleDollarSign size={16} />
+                Abonos de Empresas
+              </Link>
+            </div>
+          </div>
         </div>
 
         <button
@@ -359,19 +414,7 @@ export default function Sidebar() {
           <span>Ventas</span>
         </Link>
 
-        <div
-          className={`${linkBaseClass} justify-between text-gray-500 cursor-not-allowed opacity-70`}
-          role="button"
-          aria-disabled="true"
-          title="Sección temporalmente deshabilitada">
-          <span className="flex items-center gap-2">
-            <Map size={16} />
-            <span>Rutas</span>
-          </span>
-          <span className="text-[11px] uppercase tracking-wide">Pronto</span>
-        </div>
-
-        {/* <Link
+        <Link
           href="/rutas"
           className={`${linkBaseClass} ${pathname === "/rutas" || pathname.startsWith("/rutas/")
             ? "bg-accent text-white font-medium"
@@ -379,7 +422,7 @@ export default function Sidebar() {
             }`}>
           <Map size={16} />
           <span>Rutas</span>
-        </Link> */}
+        </Link>
 
         <Link
           href="/configuracion"

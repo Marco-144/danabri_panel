@@ -222,7 +222,7 @@ export default function PagosPendientesPage() {
                                                     <Download size={16} />
                                                 </Button>
                                             </a>
-                                            <Link href={`/proveedores/facturas/${r.id_factura}`}>
+                                            <Link href={`/proveedores/facturas?mode=detalle&id=${r.id_factura}`}>
                                                 <Button variant="lightghost" className="p-1.5 h-auto" title="Ver detalle / pagos">
                                                     <Eye size={16} className="text-primary" />
                                                 </Button>

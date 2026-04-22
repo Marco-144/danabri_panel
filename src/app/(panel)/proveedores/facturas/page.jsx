@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Download, Eye, Funnel, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -9,6 +10,8 @@ import Select from "@/components/ui/Select";
 import PageTitle from "@/components/ui/PageTitle";
 import { FilterPopover } from "@/components/ui/FilterPopover";
 import { getDownloadFacturaUrl, getFacturasProveedor } from "@/services/facturasProveedorService";
+import FacturaFormView from "./FacturaFormView";
+import FacturaDetalleView from "./FacturaDetalleView";
 
 function fmtMoney(value) {
     return Number(value || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -26,6 +29,23 @@ function statusBadge(status) {
 }
 
 export default function FacturasProveedorPage() {
+    const searchParams = useSearchParams();
+    const mode = searchParams.get("mode");
+    const id = searchParams.get("id");
+    const idOrdenCompra = searchParams.get("id_orden_compra") || "";
+
+    if (mode === "nueva") {
+        return <FacturaFormView idOrdenCompra={idOrdenCompra} />;
+    }
+
+    if (mode === "detalle" && id) {
+        return <FacturaDetalleView id={id} />;
+    }
+
+    return <FacturasProveedorListView />;
+}
+
+function FacturasProveedorListView() {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -51,6 +71,10 @@ export default function FacturasProveedorPage() {
         loadAll();
     }, []);
 
+    function onSearch() {
+        loadAll();
+    }
+
     return (
         <div className="space-y-5">
             <PageTitle
@@ -61,7 +85,7 @@ export default function FacturasProveedorPage() {
                         <Link href="/proveedores/pagos-pendientes">
                             <Button variant="outline">Ir a Pagos Pendientes</Button>
                         </Link>
-                        <Link href="/proveedores/facturas/nueva">
+                        <Link href="/proveedores/facturas?mode=nueva">
                             <Button className="gap-2">
                                 <Plus size={16} /> Nueva Factura
                             </Button>
@@ -162,7 +186,7 @@ export default function FacturasProveedorPage() {
                                                 <Download size={16} />
                                             </Button>
                                         </a>
-                                        <Link href={`/proveedores/facturas/${r.id_factura}`}>
+                                        <Link href={`/proveedores/facturas?mode=detalle&id=${r.id_factura}`}>
                                             <Button variant="lightghost" className="p-1.5 h-auto" title="Ver pagos">
                                                 <Eye size={16} />
                                             </Button>
