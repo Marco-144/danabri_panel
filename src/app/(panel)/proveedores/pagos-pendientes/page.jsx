@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, Download, Eye, Funnel, X } from "lucide-react";
+import { AlertCircle, Check, Download, Eye, Funnel, ShieldCheck, Wallet, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import PageTitle from "@/components/ui/PageTitle";
+import StatKpiCard from "@/components/ui/StatKpiCard";
 import { FilterPopover } from "@/components/ui/FilterPopover";
-import { getFacturasProveedor, getDownloadFacturaUrl } from "@/services/facturasProveedorService";
+import { cerrarFacturaInventario, getFacturasProveedor, getDownloadFacturaUrl } from "@/services/facturasProveedorService";
 import { registrarPago } from "@/services/pagosFacturaService";
 
 function fmtMoney(value) {
@@ -36,6 +37,12 @@ function getEstadoVencimiento(fechaVenc, estadoPago) {
     return `Vence en ${dias} día(s)`;
 }
 
+function cierreBadgeClass(factura) {
+    if (factura.inventario_cerrado_at) return "bg-slate-100 text-slate-700";
+    if (factura.estado_pago === "pagada") return "bg-emerald-100 text-emerald-700";
+    return "bg-blue-100 text-blue-700";
+}
+
 export default function PagosPendientesPage() {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -45,6 +52,7 @@ export default function PagosPendientesPage() {
     const [estado, setEstado] = useState("");
     const [desde, setDesde] = useState("");
     const [hasta, setHasta] = useState("");
+    const [closingId, setClosingId] = useState(null);
     const [filtersOpen, setFiltersOpen] = useState(false);
 
     const [pagoModal, setPagoModal] = useState({ open: false, factura: null });
@@ -79,6 +87,30 @@ export default function PagosPendientesPage() {
     }, [loadData]);
 
     const pendientes = useMemo(() => rows.filter((r) => Number(r.saldo_pendiente || 0) > 0), [rows]);
+    const listoParaCerrar = useMemo(
+        () => rows.filter((r) => r.estado_pago === "pagada" && !r.inventario_cerrado_at),
+        [rows]
+    );
+    const saldoPendienteTotal = useMemo(
+        () => pendientes.reduce((acc, row) => acc + Number(row.saldo_pendiente || 0), 0),
+        [pendientes]
+    );
+
+    async function onCerrarFactura(row) {
+        const ok = window.confirm(`Cerrar la factura ${row.folio_factura} y agregar al inventario?`);
+        if (!ok) return;
+
+        try {
+            setClosingId(row.id_factura);
+            await cerrarFacturaInventario(row.id_factura);
+            await loadData();
+            setError("");
+        } catch (e) {
+            setError(e.message || "No se pudo cerrar la factura");
+        } finally {
+            setClosingId(null);
+        }
+    }
 
     async function onRegistrarPago(e) {
         e.preventDefault();
@@ -117,6 +149,39 @@ export default function PagosPendientesPage() {
                 title="Pagos Pendientes de Proveedor"
                 subtitle="Control de facturas por pagar y vencidas"
             />
+
+            {listoParaCerrar.length > 0 ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800">
+                    Tienes <strong>{listoParaCerrar.length}</strong> factura(s) pagadas listas para cierre de inventario.
+                </div>
+            ) : null}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <StatKpiCard
+                    icon={<AlertCircle size={20} />}
+                    title="Facturas Pendientes"
+                    value={pendientes.length}
+                    tone={pendientes.length > 0 ? "warning" : "success"}
+                />
+                <StatKpiCard
+                    icon={<Wallet size={20} />}
+                    title="Saldo Pendiente"
+                    value={fmtMoney(saldoPendienteTotal)}
+                    tone={saldoPendienteTotal > 0 ? "warning" : "success"}
+                />
+                <StatKpiCard
+                    icon={<ShieldCheck size={20} />}
+                    title="Listas para Cierre"
+                    value={listoParaCerrar.length}
+                    tone={listoParaCerrar.length > 0 ? "success" : "default"}
+                />
+                <StatKpiCard
+                    icon={<Check size={20} />}
+                    title="Facturas Pagadas"
+                    value={rows.filter((r) => r.estado_pago === "pagada").length}
+                    tone="info"
+                />
+            </div>
 
             {error ? <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div> : null}
 
@@ -183,6 +248,7 @@ export default function PagosPendientesPage() {
                             <th className="text-right p-3">Días Restantes</th>
                             <th className="text-left p-3">Estado</th>
                             <th className="text-center p-3">Pagada</th>
+                            <th className="text-center p-3">Cierre</th>
                             <th className="text-right p-3">Total</th>
                             <th className="text-right p-3">Saldo</th>
                             <th className="text-left p-3">Observaciones</th>
@@ -191,9 +257,9 @@ export default function PagosPendientesPage() {
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={11} className="p-6 text-center text-muted">Cargando...</td></tr>
+                            <tr><td colSpan={12} className="p-6 text-center text-muted">Cargando...</td></tr>
                         ) : rows.length === 0 ? (
-                            <tr><td colSpan={11} className="p-6 text-center text-muted">Sin facturas</td></tr>
+                            <tr><td colSpan={12} className="p-6 text-center text-muted">Sin facturas</td></tr>
                         ) : rows.map((r) => {
                             const dias = getDias(r.fecha_vencimiento);
                             const pendiente = Number(r.saldo_pendiente || 0) > 0;
@@ -212,6 +278,11 @@ export default function PagosPendientesPage() {
                                             <span className="inline-flex items-center justify-center text-red-600"><X size={18} /></span>
                                         )}
                                     </td>
+                                    <td className="p-3 text-center">
+                                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cierreBadgeClass(r)}`}>
+                                            {r.inventario_cerrado_at ? "Cerrada" : r.estado_pago === "pagada" ? "Listo para cerrar" : "Pendiente"}
+                                        </span>
+                                    </td>
                                     <td className="p-3 text-right">{fmtMoney(r.total)}</td>
                                     <td className="p-3 text-right font-semibold text-primary">{fmtMoney(r.saldo_pendiente)}</td>
                                     <td className="p-3 text-xs text-muted max-w-[240px] truncate" title={r.observaciones || ""}>{r.observaciones || "-"}</td>
@@ -227,6 +298,24 @@ export default function PagosPendientesPage() {
                                                     <Eye size={16} className="text-primary" />
                                                 </Button>
                                             </Link>
+                                            {r.id_orden_compra ? (
+                                                <Link href={`/proveedores/ordenes?mode=view&id=${r.id_orden_compra}`}>
+                                                    <Button variant="lightghost" className="p-1.5 h-auto border border-gray-300" title="Ver orden de compra">
+                                                        OC
+                                                    </Button>
+                                                </Link>
+                                            ) : null}
+                                            {r.estado_pago === "pagada" && !r.inventario_cerrado_at ? (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="gap-1 bg-green-300 text-mist-100 hover:bg-green-400 border-gray-400"
+                                                    onClick={() => onCerrarFactura(r)}
+                                                    disabled={closingId === r.id_factura}
+                                                >
+                                                    <ShieldCheck size={14} /> {closingId === r.id_factura ? "Cerrando..." : "Cerrar"}
+                                                </Button>
+                                            ) : null}
                                             {pendiente && (
                                                 <Button
                                                     variant="outline"

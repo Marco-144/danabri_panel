@@ -1,3 +1,4 @@
+import { renderToBuffer } from "@react-pdf/renderer";
 import {
     createRemisionEmpresa,
     deleteRemisionEmpresa,
@@ -5,11 +6,35 @@ import {
     getRemisionesEmpresas,
     updateRemisionEmpresa,
 } from "@/modules/remisiones-empresas.service";
+import RemisionEmpresaFacturaPdf from "@/components/pdf/RemisionEmpresaFacturaPdf";
 
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
+        const action = searchParams.get("action") || "";
         const id = searchParams.get("id") || searchParams.get("id_remision_empresa") || "";
+
+        if (action === "download") {
+            if (!id) {
+                return Response.json({ error: "id requerido" }, { status: 400 });
+            }
+
+            const remision = await getRemisionEmpresaById(id);
+            if (!remision.facturada) {
+                return Response.json({ error: "La remision debe estar facturada para descargar la factura" }, { status: 400 });
+            }
+
+            const buffer = await renderToBuffer(<RemisionEmpresaFacturaPdf remision={remision} />);
+            const filename = `${String(remision.folio_factura || remision.folio_remision || `remision-${id}`).replace(/[^a-zA-Z0-9._-]/g, "_")}.pdf`;
+
+            return new Response(buffer, {
+                headers: {
+                    "Content-Type": "application/pdf",
+                    "Content-Disposition": `attachment; filename="${filename}"`,
+                    "Cache-Control": "no-store",
+                },
+            });
+        }
 
         if (id) {
             return Response.json(await getRemisionEmpresaById(id));

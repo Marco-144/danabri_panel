@@ -67,7 +67,7 @@ export async function searchEmpresasCotizacion(search = "", limit = 15) {
     return parseOrThrow(await fetch(url));
 }
 
-export async function searchProductosCotizacion(search = "", limit = 20) {
-    const url = buildUrl(API_CATALOGOS, { type: "productos", search, limit });
+export async function searchProductosCotizacion(search = "", limit = 20, unidad = "") {
+    const url = buildUrl(API_CATALOGOS, { type: "productos", search, limit, unidad });
     return parseOrThrow(await fetch(url));
 }

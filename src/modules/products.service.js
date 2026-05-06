@@ -201,36 +201,43 @@ async function syncPresentacionUbicacion(idPresentacion, data) {
             }
 
             const hasActivoCol = await hasTableColumn("ubicaciones", "activo");
-            const [insertUbicacion] = hasActivoCol
-                ? await db.execute(
-                    `INSERT INTO ubicaciones (id_almacen, id_rack, id_nivel, id_seccion, activo)
-                     VALUES (?, ?, ?, ?, 1)`,
-                    [targetAlmacen, idRack, idNivel, idSeccion]
-                )
-                : await db.execute(
-                    `INSERT INTO ubicaciones (id_almacen, id_rack, id_nivel, id_seccion)
-                     VALUES (?, ?, ?, ?)`,
-                    [targetAlmacen, idRack, idNivel, idSeccion]
-                );
+            const insertSql = hasActivoCol
+                ? `INSERT INTO ubicaciones (id_almacen, id_rack, id_nivel, id_seccion, activo) VALUES (?, ?, ?, ?, 1)`
+                : `INSERT INTO ubicaciones (id_almacen, id_rack, id_nivel, id_seccion) VALUES (?, ?, ?, ?)`;
+            const insertParams = [targetAlmacen, idRack, idNivel, idSeccion];
+
+            const [insertUbicacion] = await db.execute(insertSql, insertParams);
 
             idUbicacion = insertUbicacion.insertId;
         }
 
         await db.execute("DELETE FROM ubicaciones_presentaciones WHERE id_presentacion = ?", [idPresentacion]);
 
+        // Asegurar unicidad: eliminar cualquier mapeo previo que use la misma ubicacion
+        // No eliminar mappings por id_ubicacion: permitir que varias presentaciones tengan el mismo código
+        // Si la inserción falla por unique key, lo manejaremos y usaremos el campo codigo_ubicacion en producto_presentaciones
+        // await db.execute("DELETE FROM ubicaciones_presentaciones WHERE id_ubicacion = ?", [idUbicacion]);
+
         const hasCantidadActual = await hasTableColumn("ubicaciones_presentaciones", "cantidad_actual");
-        if (hasCantidadActual) {
-            await db.execute(
-                `INSERT INTO ubicaciones_presentaciones (id_ubicacion, id_presentacion, cantidad_actual)
-                 VALUES (?, ?, 0)`,
-                [idUbicacion, idPresentacion]
-            );
-        } else {
-            await db.execute(
-                `INSERT INTO ubicaciones_presentaciones (id_ubicacion, id_presentacion)
-                 VALUES (?, ?)`,
-                [idUbicacion, idPresentacion]
-            );
+        try {
+            if (hasCantidadActual) {
+                await db.execute(
+                    `INSERT INTO ubicaciones_presentaciones (id_ubicacion, id_presentacion, cantidad_actual) VALUES (?, ?, 0)`,
+                    [idUbicacion, idPresentacion]
+                );
+            } else {
+                await db.execute(
+                    `INSERT INTO ubicaciones_presentaciones (id_ubicacion, id_presentacion) VALUES (?, ?)`,
+                    [idUbicacion, idPresentacion]
+                );
+            }
+        } catch (err) {
+            // Si la ubicación ya está asignada a otra presentación (unique key), no re-asignamos: persistimos sólo codigo_ubicacion en producto_presentaciones
+            const msg = err?.message || String(err);
+            if (msg.includes('Duplicate entry') || msg.includes('ER_DUP_ENTRY')) {
+            } else {
+                throw err;
+            }
         }
     } catch (error) {
         // No bloquear guardado de presentacion por inconsistencias de ubicaciones/triggers.
@@ -930,6 +937,7 @@ export const getPresentacionesByProducto = async (idProducto) => {
         hasIdRack ? "pp.id_rack" : "NULL AS id_rack",
         hasIdNivel ? "pp.id_nivel" : "NULL AS id_nivel",
         hasIdSeccion ? "pp.id_seccion" : "NULL AS id_seccion",
+        "NULL AS almacen_nombre",
         hasIdMarca ? "pp.id_marca" : "p.id_marca AS id_marca",
         hasIdLinea ? "pp.id_linea" : "p.id_linea AS id_linea",
         hasIdFamilia ? "pp.id_familia" : "p.id_familia AS id_familia",
@@ -979,11 +987,13 @@ export const getPresentacionesByProducto = async (idProducto) => {
             selectColumns.push("NULL AS codigo_ubicacion_db");
         }
         selectColumns.push("u.id_almacen AS id_almacen_ubicacion");
+        selectColumns.push("a.nombre AS almacen_nombre");
         selectColumns.push("u.id_rack AS id_rack_ubicacion");
         selectColumns.push("u.id_nivel AS id_nivel_ubicacion");
         selectColumns.push("u.id_seccion AS id_seccion_ubicacion");
         joins.push("LEFT JOIN ubicaciones_presentaciones up ON up.id_presentacion = pp.id_presentacion");
         joins.push("LEFT JOIN ubicaciones u ON u.id_ubicacion = up.id_ubicacion");
+        joins.push("LEFT JOIN almacenes a ON a.id_almacen = u.id_almacen");
     }
 
     const params = [];
@@ -1000,6 +1010,7 @@ export const getPresentacionesByProducto = async (idProducto) => {
     return rows.map((row) => ({
         ...row,
         codigo_ubicacion: row.codigo_ubicacion_db ?? row.codigo_ubicacion ?? null,
+        almacen_nombre: row.almacen_nombre ?? null,
         id_almacen: row.id_almacen_ubicacion ?? null,
         id_rack: row.id_rack ?? row.id_rack_ubicacion ?? null,
         id_nivel: row.id_nivel ?? row.id_nivel_ubicacion ?? null,

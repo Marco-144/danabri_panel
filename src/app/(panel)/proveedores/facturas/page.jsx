@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Download, Eye, Funnel, Plus } from "lucide-react";
+import { AlertCircle, Download, Eye, Funnel, Plus, Receipt, ShieldCheck, Wallet } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import PageTitle from "@/components/ui/PageTitle";
+import StatKpiCard from "@/components/ui/StatKpiCard";
 import { FilterPopover } from "@/components/ui/FilterPopover";
 import { getDownloadFacturaUrl, getFacturasProveedor } from "@/services/facturasProveedorService";
 import FacturaFormView from "./FacturaFormView";
@@ -26,6 +27,18 @@ function statusBadge(status) {
     if (status === "pagada") return "bg-activo/20 text-activo";
     if (status === "parcial") return "bg-yellow-100 text-yellow-800";
     return "bg-red-100 text-red-700";
+}
+
+function cierreBadge(factura) {
+    if (factura.inventario_cerrado_at) {
+        return "bg-slate-100 text-slate-700";
+    }
+
+    if (factura.estado_pago === "pagada") {
+        return "bg-emerald-100 text-emerald-700";
+    }
+
+    return "bg-blue-100 text-blue-700";
 }
 
 export default function FacturasProveedorPage() {
@@ -53,7 +66,7 @@ function FacturasProveedorListView() {
     const [estado, setEstado] = useState("");
     const [filtersOpen, setFiltersOpen] = useState(false);
 
-    async function loadAll() {
+    const loadAll = useCallback(async () => {
         try {
             setLoading(true);
             const facturas = await getFacturasProveedor({ search, estado });
@@ -65,11 +78,20 @@ function FacturasProveedorListView() {
         } finally {
             setLoading(false);
         }
-    }
+    }, [search, estado]);
 
     useEffect(() => {
         loadAll();
-    }, []);
+    }, [loadAll]);
+
+    const kpis = useMemo(() => {
+        const totalFacturas = rows.length;
+        const totalMonto = rows.reduce((acc, item) => acc + Number(item.total || 0), 0);
+        const saldoPendiente = rows.reduce((acc, item) => acc + Number(item.saldo_pendiente || 0), 0);
+        const listasParaCerrar = rows.filter((item) => item.estado_pago === "pagada" && !item.inventario_cerrado_at).length;
+
+        return { totalFacturas, totalMonto, saldoPendiente, listasParaCerrar };
+    }, [rows]);
 
     function onSearch() {
         loadAll();
@@ -95,6 +117,42 @@ function FacturasProveedorListView() {
             />
 
             {error ? <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div> : null}
+
+            {kpis.listasParaCerrar > 0 ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800">
+                    Tienes <strong>{kpis.listasParaCerrar}</strong> factura(s) pagadas listas para cierre de inventario.
+                    <Link href="/proveedores/pagos-pendientes" className="ml-2 font-semibold underline underline-offset-2">
+                        Ir a cierre rápido
+                    </Link>
+                </div>
+            ) : null}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <StatKpiCard
+                    icon={<Receipt size={20} />}
+                    title="Facturas"
+                    value={kpis.totalFacturas}
+                    tone="default"
+                />
+                <StatKpiCard
+                    icon={<Wallet size={20} />}
+                    title="Monto Total"
+                    value={fmtMoney(kpis.totalMonto)}
+                    tone="info"
+                />
+                <StatKpiCard
+                    icon={<AlertCircle size={20} />}
+                    title="Saldo Pendiente"
+                    value={fmtMoney(kpis.saldoPendiente)}
+                    tone={kpis.saldoPendiente > 0 ? "warning" : "success"}
+                />
+                <StatKpiCard
+                    icon={<ShieldCheck size={20} />}
+                    title="Listas para Cierre"
+                    value={kpis.listasParaCerrar}
+                    tone={kpis.listasParaCerrar > 0 ? "success" : "default"}
+                />
+            </div>
 
             <div className="p-4 flex flex-col md:flex-row gap-3 md:items-center">
                 <div className="relative inline-block w-full md:w-[460px]">
@@ -155,14 +213,15 @@ function FacturasProveedorListView() {
                             <th className="text-right p-3">Total</th>
                             <th className="text-right p-3">Saldo</th>
                             <th className="text-center p-3">Estado</th>
+                            <th className="text-center p-3">Cierre</th>
                             <th className="text-center p-3">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={8} className="p-6 text-center text-muted">Cargando...</td></tr>
+                            <tr><td colSpan={9} className="p-6 text-center text-muted">Cargando...</td></tr>
                         ) : rows.length === 0 ? (
-                            <tr><td colSpan={8} className="p-6 text-center text-muted">Sin facturas</td></tr>
+                            <tr><td colSpan={9} className="p-6 text-center text-muted">Sin facturas</td></tr>
                         ) : rows.map((r) => (
                             <tr key={r.id_factura} className="border-t border-border hover:bg-background/50">
                                 <td className="p-3">{r.id_factura}</td>
@@ -179,10 +238,15 @@ function FacturasProveedorListView() {
                                         {r.estado_pago}
                                     </span>
                                 </td>
+                                <td className="p-3 text-center">
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cierreBadge(r)}`}>
+                                        {r.inventario_cerrado_at ? "Cerrada" : r.estado_pago === "pagada" ? "Listo para cerrar" : "Pendiente"}
+                                    </span>
+                                </td>
                                 <td className="p-3">
                                     <div className="flex justify-center gap-1">
                                         <a href={getDownloadFacturaUrl(r.id_factura, "pdf")} target="_blank" rel="noreferrer">
-                                            <Button variant="lightghost" className="p-1.5 h-auto" title="Descargar PDF">
+                                            <Button variant="lightghost" className="p-1.5 h-auto" title="Descargar Factura del Proveedor">
                                                 <Download size={16} />
                                             </Button>
                                         </a>

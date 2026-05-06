@@ -8,7 +8,9 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import PageTitle from "@/components/ui/PageTitle";
+import StatKpiCard from "@/components/ui/StatKpiCard";
 import { FilterPopover } from "@/components/ui/FilterPopover";
+import { getFacturasProveedor } from "@/services/facturasProveedorService";
 import {
     deleteOrdenCompra,
     getKpisOrdenesCompra,
@@ -66,6 +68,7 @@ function OrdenesList() {
     const router = useRouter();
     const [ordenes, setOrdenes] = useState([]);
     const [kpis, setKpis] = useState(null);
+    const [facturasListasCierre, setFacturasListasCierre] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [searchTerm, setSearchTerm] = useState("");
@@ -81,12 +84,15 @@ function OrdenesList() {
     async function loadAll() {
         try {
             setLoading(true);
-            const [rows, kpiData] = await Promise.all([
+            const [rows, kpiData, facturasPagadas] = await Promise.all([
                 getOrdenesCompra(),
                 getKpisOrdenesCompra(),
+                getFacturasProveedor({ estado: "pagada" }),
             ]);
             setOrdenes(Array.isArray(rows) ? rows : []);
             setKpis(kpiData || null);
+            const listas = (Array.isArray(facturasPagadas) ? facturasPagadas : []).filter((f) => !f.inventario_cerrado_at).length;
+            setFacturasListasCierre(listas);
             setError("");
         } catch (err) {
             setError(err.message || "No se pudieron cargar las ordenes");
@@ -174,10 +180,34 @@ function OrdenesList() {
 
             {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
 
+            {facturasListasCierre > 0 ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800">
+                    Tienes <strong>{facturasListasCierre}</strong> factura(s) pagadas listas para cierre de inventario.
+                    <Link href="/proveedores/pagos-pendientes" className="ml-2 font-semibold underline underline-offset-2">
+                        Ir a cierre rápido
+                    </Link>
+                </div>
+            ) : null}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <KpiCard icon={<ClipboardList size={22} className="text-primary" />} label="Total de Ordenes" value={kpis?.total_ordenes ?? 0} bg="bg-primary/8" />
-                <KpiCard icon={<TrendingUp size={22} className="text-accent" />} label="Monto Total" value={fmt(kpis?.monto_total)} bg="bg-accent/10" />
-                <KpiCard icon={<Clock size={22} className="text-yellow-600" />} label="Pendientes" value={kpis?.ordenes_pendientes ?? 0} bg="bg-yellow-50" />
+                <StatKpiCard
+                    icon={<ClipboardList size={22} />}
+                    title="Total de Ordenes"
+                    value={kpis?.total_ordenes ?? 0}
+                    tone="default"
+                />
+                <StatKpiCard
+                    icon={<TrendingUp size={22} />}
+                    title="Monto Total"
+                    value={fmt(kpis?.monto_total)}
+                    tone="info"
+                />
+                <StatKpiCard
+                    icon={<Clock size={22} />}
+                    title="Pendientes"
+                    value={kpis?.ordenes_pendientes ?? 0}
+                    tone="warning"
+                />
             </div>
 
             <div className="flex flex-col md:flex-row gap-3 md:items-center">
@@ -373,17 +403,5 @@ function OrdenRow({ orden, onStatusClick, onView, onEdit, onDelete, onPrint }) {
                 </div>
             </td>
         </tr>
-    );
-}
-
-function KpiCard({ icon, label, value, bg }) {
-    return (
-        <div className="bg-white rounded-2xl shadow-card border border-border p-5 flex items-center gap-4">
-            <div className={`rounded-xl p-3 ${bg}`}>{icon}</div>
-            <div>
-                <p className="text-xs text-muted">{label}</p>
-                <p className="text-xl font-bold text-primary mt-0.5">{value}</p>
-            </div>
-        </div>
     );
 }

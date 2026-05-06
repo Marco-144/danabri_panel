@@ -1,4 +1,4 @@
-import { getMovimientos, createMovimiento, updateMovimiento, deleteMovimiento } from "@/modules/almacenes.service";
+import { getMovimientos } from "@/modules/almacenes.service";
 
 export async function GET(req) {
     try {
@@ -20,29 +20,13 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-    try {
-        const body = await req.json();
-        return Response.json(await createMovimiento(body));
-    } catch (error) {
-        return Response.json({ error: error.message }, { status: 400 });
-    }
+    return Response.json({ error: "Los movimientos son solo de consulta" }, { status: 405 });
 }
 
 export async function PUT(req) {
-    try {
-        const body = await req.json();
-        const { id, ...payload } = body;
-        return Response.json(await updateMovimiento(id, payload));
-    } catch (error) {
-        return Response.json({ error: error.message }, { status: 400 });
-    }
+    return Response.json({ error: "Los movimientos son solo de consulta" }, { status: 405 });
 }
 
 export async function DELETE(req) {
-    try {
-        const body = await req.json();
-        return Response.json(await deleteMovimiento(body.id));
-    } catch (error) {
-        return Response.json({ error: error.message }, { status: 400 });
-    }
+    return Response.json({ error: "Los movimientos son solo de consulta" }, { status: 405 });
 }

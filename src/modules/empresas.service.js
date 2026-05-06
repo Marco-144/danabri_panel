@@ -17,6 +17,27 @@ function toNullableText(value) {
     return text || null;
 }
 
+function normalizePagoHabitual(value, { strict = false } = {}) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    const raw = toNullableText(value);
+    if (!raw) {
+        return null;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        if (strict) {
+            throw new Error("El campo pago_habitual debe tener formato YYYY-MM-DD");
+        }
+
+        return null;
+    }
+
+    return raw;
+}
+
 function toPositiveInt(value, fieldName) {
     const number = Number(value);
     if (!Number.isInteger(number) || number <= 0) {
@@ -29,6 +50,7 @@ function normalizeEmpresaRow(row) {
     return {
         ...row,
         rfc: toNullableText(row.rfc),
+        pago_habitual: normalizePagoHabitual(row.pago_habitual),
         cp: String(row.cp || "").trim(),
         direccion: String(row.direccion || "").trim(),
         colonia: String(row.colonia || "").trim(),
@@ -55,6 +77,7 @@ export async function getEmpresas({
             ciudad,
             estado,
             nombre_fiscal,
+            pago_habitual,
             created_at
         FROM empresas
         WHERE 1 = 1
@@ -102,6 +125,7 @@ export async function getEmpresaById(id) {
             ciudad,
             estado,
             nombre_fiscal,
+            pago_habitual,
             created_at
         FROM empresas
         WHERE id_empresa = ?
@@ -126,13 +150,14 @@ export async function createEmpresa(data) {
     const estado = toRequiredText(data.estado, "estado");
     const nombreFiscal = toRequiredText(data.nombre_fiscal, "nombre_fiscal");
     const rfc = toNullableText(data.rfc);
+    const pagoHabitual = normalizePagoHabitual(data.pago_habitual, { strict: true });
 
     const [result] = await db.execute(
         `
-        INSERT INTO empresas (nombre, rfc, cp, direccion, colonia, ciudad, estado, nombre_fiscal)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO empresas (nombre, rfc, cp, direccion, colonia, ciudad, estado, nombre_fiscal, pago_habitual)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [nombre, rfc, cp, direccion, colonia, ciudad, estado, nombreFiscal]
+        [nombre, rfc, cp, direccion, colonia, ciudad, estado, nombreFiscal, pagoHabitual]
     );
 
     return { id_empresa: result.insertId, message: "Empresa creada" };
@@ -181,6 +206,11 @@ export async function updateEmpresa(id, data) {
     if (data.nombre_fiscal !== undefined) {
         fields.push("nombre_fiscal = ?");
         params.push(toRequiredText(data.nombre_fiscal, "nombre_fiscal"));
+    }
+
+    if (data.pago_habitual !== undefined) {
+        fields.push("pago_habitual = ?");
+        params.push(normalizePagoHabitual(data.pago_habitual, { strict: true }));
     }
 
     if (!fields.length) {

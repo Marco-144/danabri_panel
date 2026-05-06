@@ -61,3 +61,7 @@ export async function facturarRemisionEmpresa(id, payload) {
         body: JSON.stringify({ id_remision_empresa: id, ...payload }),
     }));
 }
+
+export function getDownloadRemisionFacturaUrl(id, tipo = "pdf") {
+    return `${API}?action=download&id=${encodeURIComponent(id)}&tipo=${encodeURIComponent(tipo)}`;
+}

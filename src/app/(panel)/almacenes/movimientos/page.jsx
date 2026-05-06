@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Search, Plus, Pencil, Trash2, Warehouse } from "lucide-react";
+import { Loader2, Search, Warehouse } from "lucide-react";
 import PageTitle from "@/components/ui/PageTitle";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
-import { getAlmacenes, getMovimientos, createMovimiento, updateMovimiento, deleteMovimiento } from "@/services/almacenesService";
+import { getAlmacenes, getMovimientos } from "@/services/almacenesService";
 
 export default function AlmacenesMovimientosPage() {
     const [loading, setLoading] = useState(true);
@@ -21,8 +21,6 @@ export default function AlmacenesMovimientosPage() {
     const [origen, setOrigen] = useState("");
     const [desde, setDesde] = useState("");
     const [hasta, setHasta] = useState("");
-    const [saving, setSaving] = useState(false);
-    const [crudModal, setCrudModal] = useState({ open: false, mode: "create", item: null });
 
     async function loadBase() {
         try {
@@ -55,34 +53,6 @@ export default function AlmacenesMovimientosPage() {
         loadBase();
     }, []);
 
-    async function onSaveMovimiento(payload) {
-        try {
-            setSaving(true);
-            if (crudModal.mode === "create") {
-                await createMovimiento(payload);
-            } else {
-                await updateMovimiento(crudModal.item.id_movimiento, payload);
-            }
-            setCrudModal({ open: false, mode: "create", item: null });
-            await onSearch();
-        } catch (e) {
-            setError(e.message || "Error al guardar movimiento");
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    async function onDeleteMovimiento(id) {
-        const ok = window.confirm("Seguro que deseas eliminar este movimiento?");
-        if (!ok) return;
-        try {
-            await deleteMovimiento(id);
-            await onSearch();
-        } catch (e) {
-            setError(e.message || "Error al eliminar movimiento");
-        }
-    }
-
     return (
         <div className="space-y-4">
             <PageTitle title="Movimientos" subtitle="Control de inventario, movimientos y alertas." icon={<Warehouse />} />
@@ -93,19 +63,18 @@ export default function AlmacenesMovimientosPage() {
                     <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto/codigo/almacen" />
                     <Select value={idAlmacen} onChange={(e) => setIdAlmacen(e.target.value)} options={almacenes.map((a) => ({ value: a.id_almacen, label: a.nombre }))} placeholder="Almacen" />
                     <Select value={tipo} onChange={(e) => setTipo(e.target.value)} placeholder="Tipo" options={[{ value: "entrada", label: "Entrada" }, { value: "salida", label: "Salida" }, { value: "ajuste", label: "Ajuste" }]} />
-                    <Select value={origen} onChange={(e) => setOrigen(e.target.value)} placeholder="Origen" options={[{ value: "venta", label: "Venta" }, { value: "compra", label: "Compra" }, { value: "remision", label: "Remision" }, { value: "ajuste", label: "Ajuste" }]} />
+                    <Select value={origen} onChange={(e) => setOrigen(e.target.value)} placeholder="Origen" options={[{ value: "venta", label: "Venta" }, { value: "compra", label: "Compra" }, { value: "remision", label: "Remision" }, { value: "ajuste", label: "Ajuste" }, { value: "traspaso", label: "Traspaso" }]} />
                     <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
                     <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
                 </div>
                 <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={loadBase}>Limpiar</Button>
                     <Button onClick={onSearch}><Search size={14} /> Buscar</Button>
-                    <Button onClick={() => setCrudModal({ open: true, mode: "create", item: null })}><Plus size={14} /> Nuevo</Button>
                 </div>
             </Card>
 
             <div className="bg-white rounded-2xl shadow-card border border-border overflow-x-auto">
-                <table className="w-full text-sm min-w-[980px]">
+                <table className="w-full text-sm min-w-[1100px]">
                     <thead className="bg-background text-primary">
                         <tr>
                             <th className="text-left p-3">Fecha</th>
@@ -116,7 +85,7 @@ export default function AlmacenesMovimientosPage() {
                             <th className="text-left p-3">Codigo</th>
                             <th className="text-left p-3">Almacen</th>
                             <th className="text-right p-3">Cantidad</th>
-                            <th className="text-center p-3">Acciones</th>
+                            <th className="text-left p-3">Nota</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -139,71 +108,13 @@ export default function AlmacenesMovimientosPage() {
                                     <td className="p-3">{r.codigo_barras || "-"}</td>
                                     <td className="p-3">{r.almacen_nombre}</td>
                                     <td className="p-3 text-right font-medium">{r.cantidad}</td>
-                                    <td className="p-3">
-                                        <div className="flex justify-center gap-2">
-                                            <Button variant="ghost" size="sm" onClick={() => setCrudModal({ open: true, mode: "edit", item: r })}><Pencil size={14} /></Button>
-                                            <Button variant="ghost" size="sm" onClick={() => onDeleteMovimiento(r.id_movimiento)}><Trash2 size={14} /></Button>
-                                        </div>
-                                    </td>
+                                    <td className="p-3 text-muted">{r.nota || "-"}</td>
                                 </tr>
                             ))
                         )}
                     </tbody>
                 </table>
             </div>
-
-            {crudModal.open && (
-                <MovimientoCrudModal
-                    mode={crudModal.mode}
-                    item={crudModal.item}
-                    almacenes={almacenes}
-                    saving={saving}
-                    onCancel={() => setCrudModal({ open: false, mode: "create", item: null })}
-                    onSubmit={onSaveMovimiento}
-                />
-            )}
-        </div>
-    );
-}
-
-function MovimientoCrudModal({ mode, item, almacenes, saving, onCancel, onSubmit }) {
-    const [form, setForm] = useState({
-        id_presentacion: item?.id_presentacion || "",
-        id_almacen: item?.id_almacen || "",
-        tipo: item?.tipo || "entrada",
-        cantidad: item?.cantidad || 1,
-        origen: item?.origen || "ajuste",
-        id_origen: item?.id_origen || "",
-    });
-
-    return (
-        <div className="fixed inset-0 z-50 bg-primary/40 flex items-center justify-center p-4">
-            <form
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    onSubmit({
-                        id_presentacion: Number(form.id_presentacion),
-                        id_almacen: Number(form.id_almacen),
-                        tipo: form.tipo,
-                        cantidad: Number(form.cantidad),
-                        origen: form.origen,
-                        id_origen: Number(form.id_origen),
-                    });
-                }}
-                className="bg-white rounded-2xl border border-border shadow-card w-full max-w-lg p-5 space-y-4"
-            >
-                <h3 className="text-lg font-semibold text-primary">{mode === "create" ? "Nuevo movimiento" : "Editar movimiento"}</h3>
-                <Input label="ID Presentacion" type="number" min="1" value={form.id_presentacion} onChange={(e) => setForm((p) => ({ ...p, id_presentacion: e.target.value }))} />
-                <Select label="Almacen" value={form.id_almacen} onChange={(e) => setForm((p) => ({ ...p, id_almacen: e.target.value }))} options={almacenes.map((a) => ({ value: a.id_almacen, label: a.nombre }))} placeholder="Seleccionar" />
-                <Select label="Tipo" value={form.tipo} onChange={(e) => setForm((p) => ({ ...p, tipo: e.target.value }))} options={[{ value: "entrada", label: "Entrada" }, { value: "salida", label: "Salida" }, { value: "ajuste", label: "Ajuste" }]} />
-                <Input label="Cantidad" type="number" min="1" value={form.cantidad} onChange={(e) => setForm((p) => ({ ...p, cantidad: e.target.value }))} />
-                <Select label="Origen" value={form.origen} onChange={(e) => setForm((p) => ({ ...p, origen: e.target.value }))} options={[{ value: "venta", label: "Venta" }, { value: "compra", label: "Compra" }, { value: "remision", label: "Remision" }, { value: "ajuste", label: "Ajuste" }]} />
-                <Input label="ID Origen" type="number" min="1" value={form.id_origen} onChange={(e) => setForm((p) => ({ ...p, id_origen: e.target.value }))} />
-                <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={onCancel}>Cancelar</Button>
-                    <Button type="submit" variant="accent" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
-                </div>
-            </form>
         </div>
     );
 }

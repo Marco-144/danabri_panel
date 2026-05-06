@@ -2,7 +2,7 @@ import db from "@/lib/db";
 
 const TIPOS_ALMACEN = new Set(["matriz", "sucursal"]);
 const TIPOS_MOV = new Set(["entrada", "salida", "ajuste"]);
-const ORIGEN_MOV = new Set(["venta", "compra", "remision", "ajuste"]);
+const ORIGEN_MOV = new Set(["venta", "compra", "remision", "ajuste", "traspaso"]);
 const TIPOS_ALERTA = new Set(["bajo_tienda", "bajo_bodega", "resurtido_tienda", "compra_proveedor"]);
 const ESTADOS_ALERTA = new Set(["activa", "resuelta", "omitida"]);
 
@@ -59,6 +59,32 @@ function normalizeEstadoAlerta(estado) {
 
 function buildFolio(prefix = "ALM") {
     return `${prefix}-${Date.now()}`;
+}
+
+function normalizeNota(value) {
+    const text = String(value || "").trim();
+    return text || null;
+}
+
+async function getPresentacionContext(conn, idPresentacion) {
+    const [rows] = await conn.execute(
+        `SELECT
+           pp.id_presentacion,
+           pp.id_producto,
+           pp.nombre AS presentacion_nombre,
+           pp.piezas_por_presentacion,
+           p.nombre AS producto_nombre
+         FROM producto_presentaciones pp
+         INNER JOIN productos p ON p.id_producto = pp.id_producto
+         WHERE pp.id_presentacion = ?`,
+        [idPresentacion]
+    );
+
+    if (!rows.length) {
+        throw new Error("Presentacion no encontrada");
+    }
+
+    return rows[0];
 }
 
 export async function getAlmacenes(search = "") {
@@ -271,6 +297,7 @@ export async function getMovimientos({ id_almacen = null, tipo = "", origen = ""
       m.tipo,
       m.origen,
       m.id_origen,
+    m.nota,
       m.cantidad,
       m.id_almacen,
       a.nombre AS almacen_nombre,
@@ -313,8 +340,8 @@ export async function getMovimientos({ id_almacen = null, tipo = "", origen = ""
     }
 
     if (search) {
-        sql += " AND (p.nombre LIKE ? OR pp.codigo_barras LIKE ? OR a.nombre LIKE ?)";
-        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+        sql += " AND (p.nombre LIKE ? OR pp.codigo_barras LIKE ? OR a.nombre LIKE ? OR m.nota LIKE ?)";
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     sql += " ORDER BY m.id_movimiento DESC";
@@ -330,11 +357,12 @@ export async function createMovimiento(payload) {
     const cantidad = toPositiveInt(payload?.cantidad, "cantidad");
     const origen = normalizeOrigen(payload?.origen);
     const id_origen = toPositiveInt(payload?.id_origen, "id_origen");
+    const nota = normalizeNota(payload?.nota);
 
     const [r] = await db.execute(
-        `INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [id_presentacion, id_almacen, tipo, cantidad, origen, id_origen]
+        `INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota]
     );
 
     return { ok: true, id_movimiento: r.insertId };
@@ -369,6 +397,10 @@ export async function updateMovimiento(id, payload) {
         fields.push("id_origen = ?");
         params.push(toPositiveInt(payload.id_origen, "id_origen"));
     }
+    if (payload?.nota !== undefined) {
+        fields.push("nota = ?");
+        params.push(normalizeNota(payload.nota));
+    }
 
     if (!fields.length) throw new Error("No hay campos para actualizar");
 
@@ -388,26 +420,118 @@ export async function deleteMovimiento(id) {
 export async function ajusteInventario(payload) {
     const id_almacen = toPositiveInt(payload?.id_almacen, "id_almacen");
     const id_presentacion = toPositiveInt(payload?.id_presentacion, "id_presentacion");
-    const tipo = normalizeTipoMovimiento(payload?.tipo);
+    const id_presentacion_destino = toOptionalInt(payload?.id_presentacion_destino, "id_presentacion_destino");
+    const tipo = id_presentacion_destino ? "ajuste" : normalizeTipoMovimiento(payload?.tipo);
     const origen = String(payload?.origen || "ajuste").toLowerCase();
     const id_origen = toOptionalInt(payload?.id_origen, "id_origen") || Number(`${Date.now()}`.slice(-9));
+    const nota = normalizeNota(payload?.nota || payload?.motivo || payload?.observaciones);
 
-    let delta = 0;
-    if (tipo === "entrada") {
-        delta = toPositiveInt(payload?.cantidad, "cantidad");
-    } else if (tipo === "salida") {
-        delta = -toPositiveInt(payload?.cantidad, "cantidad");
-    } else {
-        const n = Number(payload?.cantidad);
-        if (!Number.isInteger(n) || n === 0) {
-            throw new Error("En ajuste, cantidad debe ser entero distinto de 0");
-        }
-        delta = n;
+    if (!id_presentacion_destino && !nota) {
+        throw new Error("El ajuste requiere una nota o motivo");
     }
 
     const conn = await db.getConnection();
+
     try {
         await conn.beginTransaction();
+
+        const presentacionOrigen = await getPresentacionContext(conn, id_presentacion);
+
+        if (id_presentacion_destino) {
+            if (id_presentacion_destino === id_presentacion) {
+                throw new Error("La presentacion destino debe ser diferente a la origen");
+            }
+
+            const presentacionDestino = await getPresentacionContext(conn, id_presentacion_destino);
+
+            if (Number(presentacionOrigen.id_producto) !== Number(presentacionDestino.id_producto)) {
+                throw new Error("Solo puedes ajustar presentaciones del mismo producto");
+            }
+
+            const cantidadDestino = toPositiveInt(payload?.cantidad_destino ?? payload?.cantidad, "cantidad_destino");
+            const piezasOrigen = toPositiveInt(presentacionOrigen.piezas_por_presentacion, "piezas_origen");
+            const piezasDestino = toPositiveInt(presentacionDestino.piezas_por_presentacion, "piezas_destino");
+            const cantidadOrigenExacta = (cantidadDestino * piezasDestino) / piezasOrigen;
+
+            if (!Number.isInteger(cantidadOrigenExacta) || cantidadOrigenExacta <= 0) {
+                throw new Error("La cantidad destino no se puede convertir exactamente desde la presentacion origen");
+            }
+
+            const cantidadOrigen = cantidadOrigenExacta;
+
+            const [invOrigenRows] = await conn.execute(
+                "SELECT id_inventario, stock, stock_minimo FROM inventario WHERE id_almacen = ? AND id_presentacion = ? FOR UPDATE",
+                [id_almacen, id_presentacion]
+            );
+
+            if (!invOrigenRows.length) {
+                throw new Error("No existe inventario para la presentacion origen");
+            }
+
+            const [invDestinoRows] = await conn.execute(
+                "SELECT id_inventario, stock, stock_minimo FROM inventario WHERE id_almacen = ? AND id_presentacion = ? FOR UPDATE",
+                [id_almacen, id_presentacion_destino]
+            );
+
+            if (Number(invOrigenRows[0].stock || 0) < cantidadOrigen) {
+                throw new Error("Stock insuficiente para convertir la presentacion origen");
+            }
+
+            if (!invDestinoRows.length) {
+                await conn.execute(
+                    "INSERT INTO inventario (id_presentacion, id_almacen, stock, stock_minimo) VALUES (?, ?, 0, 0)",
+                    [id_presentacion_destino, id_almacen]
+                );
+            }
+
+            await conn.execute(
+                "UPDATE inventario SET stock = stock - ? WHERE id_almacen = ? AND id_presentacion = ?",
+                [cantidadOrigen, id_almacen, id_presentacion]
+            );
+
+            await conn.execute(
+                "UPDATE inventario SET stock = stock + ? WHERE id_almacen = ? AND id_presentacion = ?",
+                [cantidadDestino, id_almacen, id_presentacion_destino]
+            );
+
+            const baseNota = `Conversion de ${cantidadOrigen} ${presentacionOrigen.presentacion_nombre} (${presentacionOrigen.producto_nombre}) a ${cantidadDestino} ${presentacionDestino.presentacion_nombre}`;
+            const notaSalida = nota ? `${baseNota}. Motivo: ${nota}` : baseNota;
+            const notaEntrada = nota ? `${baseNota}. Motivo: ${nota}` : baseNota;
+
+            await conn.execute(
+                "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota) VALUES (?, ?, 'salida', ?, 'ajuste', ?, ?)",
+                [id_presentacion, id_almacen, cantidadOrigen, id_origen, notaSalida]
+            );
+
+            await conn.execute(
+                "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota) VALUES (?, ?, 'entrada', ?, 'ajuste', ?, ?)",
+                [id_presentacion_destino, id_almacen, cantidadDestino, id_origen, notaEntrada]
+            );
+
+            await conn.commit();
+
+            return {
+                ok: true,
+                folio: buildFolio("AJ"),
+                conversion: true,
+                cantidad_origen: cantidadOrigen,
+                cantidad_destino: cantidadDestino,
+                producto: presentacionOrigen.producto_nombre,
+            };
+        }
+
+        let delta = 0;
+        if (tipo === "entrada") {
+            delta = toPositiveInt(payload?.cantidad, "cantidad");
+        } else if (tipo === "salida") {
+            delta = -toPositiveInt(payload?.cantidad, "cantidad");
+        } else {
+            const n = Number(payload?.cantidad);
+            if (!Number.isInteger(n) || n === 0) {
+                throw new Error("En ajuste, cantidad debe ser entero distinto de 0");
+            }
+            delta = n;
+        }
 
         const [invRows] = await conn.execute(
             "SELECT id_inventario, stock, stock_minimo FROM inventario WHERE id_almacen = ? AND id_presentacion = ? FOR UPDATE",
@@ -438,8 +562,8 @@ export async function ajusteInventario(payload) {
         );
 
         await conn.execute(
-            "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen) VALUES (?, ?, ?, ?, ?, ?)",
-            [id_presentacion, id_almacen, tipo, Math.abs(delta), origen, id_origen]
+            "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [id_presentacion, id_almacen, tipo, Math.abs(delta), origen, id_origen, nota]
         );
 
         await conn.commit();
@@ -466,9 +590,14 @@ export async function traspasoInventario(payload) {
     const id_presentacion = toPositiveInt(payload?.id_presentacion, "id_presentacion");
     const cantidad = toPositiveInt(payload?.cantidad, "cantidad");
     const id_origen = toOptionalInt(payload?.id_origen, "id_origen") || Number(`${Date.now()}`.slice(-9));
+    const nota = normalizeNota(payload?.nota || payload?.motivo || payload?.observaciones);
 
     if (id_almacen_origen === id_almacen_destino) {
         throw new Error("Origen y destino deben ser diferentes");
+    }
+
+    if (!nota) {
+        throw new Error("El traspaso requiere una nota o motivo");
     }
 
     const conn = await db.getConnection();
@@ -509,13 +638,13 @@ export async function traspasoInventario(payload) {
         );
 
         await conn.execute(
-            "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen) VALUES (?, ?, 'salida', ?, 'ajuste', ?)",
-            [id_presentacion, id_almacen_origen, cantidad, id_origen]
+            "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota) VALUES (?, ?, 'salida', ?, 'traspaso', ?, ?)",
+            [id_presentacion, id_almacen_origen, cantidad, id_origen, `Salida por traspaso. ${nota}`]
         );
 
         await conn.execute(
-            "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen) VALUES (?, ?, 'entrada', ?, 'ajuste', ?)",
-            [id_presentacion, id_almacen_destino, cantidad, id_origen]
+            "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota) VALUES (?, ?, 'entrada', ?, 'traspaso', ?, ?)",
+            [id_presentacion, id_almacen_destino, cantidad, id_origen, `Entrada por traspaso. ${nota}`]
         );
 
         await conn.commit();
@@ -530,6 +659,70 @@ export async function traspasoInventario(payload) {
         throw error;
     } finally {
         conn.release();
+    }
+}
+
+export async function aplicarMovimientoRemision(conn, id_remision, detalles) {
+    if (!Array.isArray(detalles) || !detalles.length) {
+        throw new Error("Detalles de remisión requeridos");
+    }
+
+    for (const detalle of detalles) {
+        const id_presentacion = toPositiveInt(detalle.id_presentacion, "id_presentacion");
+        const id_almacen = toPositiveInt(detalle.id_almacen, "id_almacen");
+        const cantidad = toPositiveInt(detalle.cantidad, "cantidad");
+
+        const [inventarioRows] = await conn.execute(
+            "SELECT stock FROM inventario WHERE id_almacen = ? AND id_presentacion = ? FOR UPDATE",
+            [id_almacen, id_presentacion]
+        );
+
+        if (!inventarioRows.length) {
+            throw new Error(`No hay inventario para presentación en almacén`);
+        }
+
+        const stockActual = Number(inventarioRows[0].stock || 0);
+        if (stockActual < cantidad) {
+            throw new Error(`Stock insuficiente para presentación (disponible: ${stockActual}, solicitado: ${cantidad})`);
+        }
+
+        await conn.execute(
+            "UPDATE inventario SET stock = stock - ? WHERE id_almacen = ? AND id_presentacion = ?",
+            [cantidad, id_almacen, id_presentacion]
+        );
+
+        await conn.execute(
+            "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota) VALUES (?, ?, 'salida', ?, 'remision', ?, ?)",
+            [id_presentacion, id_almacen, cantidad, id_remision, `Salida por remisión cliente #${id_remision}`]
+        );
+    }
+}
+
+export async function reversorMovimientoRemision(conn, id_remision) {
+    const [movimientos] = await conn.execute(
+        "SELECT id_presentacion, id_almacen, cantidad FROM movimientos_inventario WHERE origen = 'remision' AND id_origen = ?",
+        [id_remision]
+    );
+
+    for (const mov of movimientos) {
+        const id_presentacion = mov.id_presentacion;
+        const id_almacen = mov.id_almacen;
+        const cantidad = Number(mov.cantidad || 0);
+
+        await conn.execute(
+            "UPDATE inventario SET stock = stock + ? WHERE id_almacen = ? AND id_presentacion = ?",
+            [cantidad, id_almacen, id_presentacion]
+        );
+
+        await conn.execute(
+            "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota) VALUES (?, ?, 'entrada', ?, 'remision', ?, ?)",
+            [id_presentacion, id_almacen, cantidad, id_remision, `Reversión de remisión cliente #${id_remision}`]
+        );
+
+        await conn.execute(
+            "DELETE FROM movimientos_inventario WHERE origen = 'remision' AND id_origen = ?",
+            [id_remision]
+        );
     }
 }
 

@@ -9,6 +9,7 @@ const variants = {
     ghost: "text-primary hover:bg-[#dfdfdf]",
     warning : "bg-yellow-500 text-white hover:bg-yellow-600",
     danger: "bg-red-600 text-white hover:bg-red-700",
+    generate: "bg-green-600 text-white hover:bg-green-700",
     activo: "bg-activo text-white hover:bg-hoveractivo",
     inactivo: "bg-inactivo text-white hover:bg-hoverinactivo",
     tabActive: "bg-primary text-white border-primary",
