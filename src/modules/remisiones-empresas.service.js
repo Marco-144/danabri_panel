@@ -1,4 +1,5 @@
 import db from "@/lib/db";
+import { aplicarMovimientoRemision, reversorMovimientoRemision } from "./almacenes.service";
 
 const IVA_RATE = 0.16;
 
@@ -52,6 +53,9 @@ function normalizeDetalleInput(detalle, line) {
     const descripcion = String(detalle.descripcion || "").trim();
     if (!descripcion) throw new Error(`descripcion de la partida ${line} es requerida`);
 
+    const id_presentacion = toPositiveInt(detalle.id_presentacion, `id_presentacion de la partida ${line}`);
+    const id_almacen = toPositiveInt(detalle.id_almacen, `id_almacen de la partida ${line}`);
+
     const cantidad_factura = toPositiveInt(
         detalle.cantidad_factura !== undefined ? detalle.cantidad_factura : detalle.cantidad,
         `cantidad factura de la partida ${line}`
@@ -62,11 +66,6 @@ function normalizeDetalleInput(detalle, line) {
         ? cantidadSistemaRaw
         : cantidad_factura;
 
-    const isDivisible = (cantidad_factura % cantidad_sistema === 0) || (cantidad_sistema % cantidad_factura === 0);
-    if (!isDivisible) {
-        throw new Error(`la cantidad factura de la partida ${line} debe ser multiplo o divisor de cantidad sistema`);
-    }
-
     const precio_sin_iva = toMoney(detalle.precio_sin_iva, `precio sin IVA de la partida ${line}`);
     const precio_con_iva = toMoney(
         detalle.precio_con_iva !== undefined ? detalle.precio_con_iva : precio_sin_iva * (1 + IVA_RATE),
@@ -75,6 +74,8 @@ function normalizeDetalleInput(detalle, line) {
 
     return {
         descripcion,
+        id_presentacion,
+        id_almacen,
         requerimiento: String(detalle.requerimiento || "").trim() || null,
         cantidad_sistema,
         cantidad_factura,
@@ -103,6 +104,7 @@ function parseListRow(row) {
         empresa_ciudad: row.empresa_ciudad,
         empresa_cp: row.empresa_cp,
         empresa_estado: row.empresa_estado,
+        empresa_pago_habitual: row.empresa_pago_habitual,
         id_usuario: row.id_usuario,
         usuario_nombre: row.usuario_nombre,
         fecha_remision: row.fecha_remision,
@@ -155,12 +157,16 @@ async function getCotizacionDetalleForRemision(connection, idCotizacion) {
         `
         SELECT
             id_detalleCotizacionEmpresa,
+            id_presentacion,
+            id_almacen,
             descripcion,
             cantidad,
             precio_sin_iva,
             precio_con_iva,
             unidad,
-            total
+            total,
+            (SELECT pp.nombre FROM producto_presentaciones pp WHERE pp.id_presentacion = detalle_cotizacion_empresa.id_presentacion LIMIT 1) AS presentacion_nombre,
+            (SELECT a.nombre FROM almacenes a WHERE a.id_almacen = detalle_cotizacion_empresa.id_almacen LIMIT 1) AS almacen_nombre
         FROM detalle_cotizacion_empresa
         WHERE id_cotizacion_empresa = ?
         ORDER BY id_detalleCotizacionEmpresa ASC
@@ -185,6 +191,10 @@ async function getCotizacionDetalleForRemision(connection, idCotizacion) {
         return {
             descripcion,
             requerimiento,
+            id_presentacion: row.id_presentacion ? Number(row.id_presentacion) : null,
+            id_almacen: row.id_almacen ? Number(row.id_almacen) : null,
+            presentacion_nombre: row.presentacion_nombre || "",
+            almacen_nombre: row.almacen_nombre || "",
             cantidad_sistema: cantidad,
             cantidad_factura: cantidad,
             unidad: normalizeUnidad(row.unidad),
@@ -223,6 +233,7 @@ export async function getRemisionesEmpresas({
             e.ciudad AS empresa_ciudad,
             e.cp AS empresa_cp,
             e.estado AS empresa_estado,
+            e.pago_habitual AS empresa_pago_habitual,
             re.id_usuario,
             u.nombre AS usuario_nombre,
             re.fecha_remision,
@@ -299,6 +310,7 @@ export async function getRemisionEmpresaById(id) {
             e.ciudad AS empresa_ciudad,
             e.cp AS empresa_cp,
             e.estado AS empresa_estado,
+            e.pago_habitual AS empresa_pago_habitual,
             re.id_usuario,
             u.nombre AS usuario_nombre,
             re.fecha_remision,
@@ -333,6 +345,8 @@ export async function getRemisionEmpresaById(id) {
         `
         SELECT
             id_detalle_remision_empresa,
+            id_presentacion,
+            id_almacen,
             descripcion,
             requerimiento,
             cantidad_sistema,
@@ -344,7 +358,9 @@ export async function getRemisionEmpresaById(id) {
             total_con_iva,
             piso,
             bodega,
-            orden
+            orden,
+            (SELECT pp.nombre FROM producto_presentaciones pp WHERE pp.id_presentacion = detalle_remision_empresa.id_presentacion LIMIT 1) AS presentacion_nombre,
+            (SELECT a.nombre FROM almacenes a WHERE a.id_almacen = detalle_remision_empresa.id_almacen LIMIT 1) AS almacen_nombre
         FROM detalle_remision_empresa
         WHERE id_remision_empresa = ?
         ORDER BY orden ASC, id_detalle_remision_empresa ASC
@@ -362,6 +378,10 @@ export async function getRemisionEmpresaById(id) {
         observaciones: headers[0].observaciones,
         detalles: detalles.map((line) => ({
             id_detalle_remision_empresa: line.id_detalle_remision_empresa,
+            id_presentacion: Number(line.id_presentacion || 0),
+            id_almacen: Number(line.id_almacen || 0),
+            presentacion_nombre: line.presentacion_nombre || "",
+            almacen_nombre: line.almacen_nombre || "",
             descripcion: line.descripcion,
             requerimiento: line.requerimiento,
             cantidad_sistema: Number(line.cantidad_sistema || 0),
@@ -473,6 +493,8 @@ export async function createRemisionEmpresa(payload) {
                 `
                 INSERT INTO detalle_remision_empresa (
                     id_remision_empresa,
+                    id_presentacion,
+                    id_almacen,
                     descripcion,
                     requerimiento,
                     cantidad_sistema,
@@ -489,6 +511,8 @@ export async function createRemisionEmpresa(payload) {
                 `,
                 [
                     idRemision,
+                    d.id_presentacion,
+                    d.id_almacen,
                     d.descripcion,
                     d.requerimiento,
                     d.cantidad_sistema,
@@ -504,6 +528,12 @@ export async function createRemisionEmpresa(payload) {
                 ]
             );
         }
+
+        await aplicarMovimientoRemision(conn, idRemision, detalles.map((item) => ({
+            id_presentacion: item.id_presentacion,
+            id_almacen: item.id_almacen,
+            cantidad: item.cantidad_factura,
+        })));
 
         await conn.commit();
         return getRemisionEmpresaById(idRemision);
@@ -533,6 +563,8 @@ export async function updateRemisionEmpresa(id, payload) {
         );
 
         if (!current) throw new Error("remision no encontrada");
+
+        await reversorMovimientoRemision(conn, idRemision);
 
         const { idEmpresa, idUsuario } = await ensureHeaderRefs(conn, {
             id_empresa: payload.id_empresa,
@@ -597,6 +629,8 @@ export async function updateRemisionEmpresa(id, payload) {
                 `
                 INSERT INTO detalle_remision_empresa (
                     id_remision_empresa,
+                    id_presentacion,
+                    id_almacen,
                     descripcion,
                     requerimiento,
                     cantidad_sistema,
@@ -613,6 +647,8 @@ export async function updateRemisionEmpresa(id, payload) {
                 `,
                 [
                     idRemision,
+                    d.id_presentacion,
+                    d.id_almacen,
                     d.descripcion,
                     d.requerimiento,
                     d.cantidad_sistema,
@@ -628,6 +664,12 @@ export async function updateRemisionEmpresa(id, payload) {
                 ]
             );
         }
+
+        await aplicarMovimientoRemision(conn, idRemision, detalles.map((item) => ({
+            id_presentacion: item.id_presentacion,
+            id_almacen: item.id_almacen,
+            cantidad: item.cantidad_factura,
+        })));
 
         await conn.commit();
         return getRemisionEmpresaById(idRemision);
@@ -661,6 +703,8 @@ export async function deleteRemisionEmpresa(id) {
             throw new Error("no se puede eliminar una remision con abonos registrados");
         }
 
+        await reversorMovimientoRemision(conn, idRemision);
+
         await conn.execute("DELETE FROM remisiones_empresa WHERE id_remision_empresa = ?", [idRemision]);
 
         await conn.commit();
@@ -675,19 +719,32 @@ export async function deleteRemisionEmpresa(id) {
 
 export async function facturarRemisionEmpresa(id, payload) {
     const idRemision = toPositiveInt(id, "id_remision_empresa");
-
-    const folioFactura = String(payload.folio_factura || "").trim();
     const fechaFactura = toDate(payload.fecha_factura, "fecha_factura");
     const metodoPago = String(payload.metodo_pago || "").trim();
     const formaPago = String(payload.forma_pago || "").trim();
     const usoCfdi = String(payload.uso_cfdi || "").trim();
     const regimenFiscal = String(payload.regimen_fiscal || "").trim();
+    const folioFactura = String(payload.folio_factura || "").trim();
 
     if (!folioFactura) throw new Error("folio_factura es requerido");
     if (!metodoPago) throw new Error("metodo_pago es requerido");
     if (!formaPago) throw new Error("forma_pago es requerido");
     if (!usoCfdi) throw new Error("uso_cfdi es requerido");
     if (!regimenFiscal) throw new Error("regimen_fiscal es requerido");
+
+    const [[remision]] = await db.execute(
+        `
+        SELECT folio_remision
+        FROM remisiones_empresa
+        WHERE id_remision_empresa = ?
+        LIMIT 1
+        `,
+        [idRemision]
+    );
+
+    if (!remision) throw new Error("remision no encontrada");
+
+    const folioFacturaFinal = folioFactura || `FAC-${String(remision.folio_remision || idRemision)}`;
 
     await db.execute(
         `
@@ -706,7 +763,7 @@ export async function facturarRemisionEmpresa(id, payload) {
         WHERE id_remision_empresa = ?
         `,
         [
-            folioFactura,
+            folioFacturaFinal,
             fechaFactura,
             metodoPago,
             formaPago,

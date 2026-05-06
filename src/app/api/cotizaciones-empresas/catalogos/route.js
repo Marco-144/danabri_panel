@@ -15,7 +15,8 @@ export async function GET(req) {
         }
 
         if (type === "productos") {
-            return Response.json(await searchProductosCatalog({ search, limit }));
+            const unidad = searchParams.get("unidad") || "";
+            return Response.json(await searchProductosCatalog({ search, limit, unidad }));
         }
 
         return Response.json({ error: "type invalido" }, { status: 400 });

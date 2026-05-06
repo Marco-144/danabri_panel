@@ -81,7 +81,7 @@ async function lockInventario(conn, idAlmacen, idPresentacion) {
   return rows[0] || null;
 }
 
-async function aplicarMovimientoVenta(conn, { id_almacen, id_presentacion, cantidad, tipo, id_origen }) {
+async function aplicarMovimientoVenta(conn, { id_almacen, id_presentacion, cantidad, tipo, id_origen, nota = null }) {
   if (!id_almacen) throw new Error("La venta no tiene almacen asociado");
 
   const inventario = await lockInventario(conn, id_almacen, id_presentacion);
@@ -115,8 +115,8 @@ async function aplicarMovimientoVenta(conn, { id_almacen, id_presentacion, canti
   }
 
   await conn.execute(
-    "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen) VALUES (?, ?, ?, ?, 'venta', ?)",
-    [id_presentacion, id_almacen, tipo, cantidad, id_origen]
+    "INSERT INTO movimientos_inventario (id_presentacion, id_almacen, tipo, cantidad, origen, id_origen, nota) VALUES (?, ?, ?, ?, 'venta', ?, ?)",
+    [id_presentacion, id_almacen, tipo, cantidad, id_origen, nota]
   );
 }
 
@@ -388,6 +388,7 @@ export async function createVenta(data, context = {}) {
           cantidad: item.cantidad,
           tipo: "salida",
           id_origen: idVenta,
+          nota: `Salida por venta ${folio}`,
         });
       }
     }
@@ -450,6 +451,7 @@ export async function updateVenta(id, data) {
           cantidad: Number(item.cantidad || 0),
           tipo: "entrada",
           id_origen: idVenta,
+          nota: `Reversion de venta ${ventaActual.folio}`,
         });
       }
     }
@@ -487,6 +489,7 @@ export async function updateVenta(id, data) {
           cantidad: item.cantidad,
           tipo: "salida",
           id_origen: idVenta,
+          nota: `Salida por venta ${ventaActual.folio}`,
         });
       }
     }
@@ -530,6 +533,7 @@ export async function deleteVenta(id) {
           cantidad: Number(item.cantidad || 0),
           tipo: "entrada",
           id_origen: idVenta,
+          nota: `Reversion de venta ${venta.folio}`,
         });
       }
     }

@@ -4,6 +4,7 @@ import { getPresentacionesByProducto } from "@/services/productosService";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
+import SelectReact from "react-select";
 
 export default function PresentacionForm({ mode, item, productos, marcas, lineas, familias, racks, niveles, secciones, almacenes, proveedores, selectedProductoId, onClose, onSave, }) {
     const ensureOption = (options, currentValue) => {
@@ -55,7 +56,6 @@ export default function PresentacionForm({ mode, item, productos, marcas, lineas
         id_marca: item?.id_marca ? String(item.id_marca) : "",
         id_linea: item?.id_linea ? String(item.id_linea) : "",
         id_familia: item?.id_familia ? String(item.id_familia) : "",
-        ubicacion: item?.ubicacion || "tienda",
         id_almacen: item?.id_almacen ? String(item.id_almacen) : "",
         id_rack: item?.id_rack ? String(item.id_rack) : "",
         id_nivel: item?.id_nivel ? String(item.id_nivel) : "",
@@ -181,6 +181,7 @@ export default function PresentacionForm({ mode, item, productos, marcas, lineas
 
     const submit = (e) => {
         e.preventDefault();
+
         const payload = {
             id_producto: Number(form.id_producto),
             nombre: String(form.nombre || "").trim(),
@@ -192,7 +193,6 @@ export default function PresentacionForm({ mode, item, productos, marcas, lineas
             id_marca: form.id_marca ? Number(form.id_marca) : null,
             id_linea: form.id_linea ? Number(form.id_linea) : null,
             id_familia: form.id_familia ? Number(form.id_familia) : null,
-            ubicacion: String(form.ubicacion || "").trim(),
             id_almacen: form.id_almacen ? Number(form.id_almacen) : null,
             id_rack: form.id_rack ? Number(form.id_rack) : null,
             id_nivel: form.id_nivel ? Number(form.id_nivel) : null,
@@ -218,13 +218,16 @@ export default function PresentacionForm({ mode, item, productos, marcas, lineas
 
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[75vh] overflow-y-auto">
                 <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Select
-                        label="Producto"
-                        value={form.id_producto}
-                        onChange={(e) => setForm((p) => ({ ...p, id_producto: e.target.value }))}
-                        options={productoOptions}
-                        placeholder="Selecciona producto"
-                    />
+                    <div>
+                        <p className="text-sm text-muted m-1">Producto</p>
+                        <SelectReact
+                            value={form.id_producto ? productoOptions.find((o) => String(o.value) === String(form.id_producto)) : null}
+                            onChange={(option) => setForm((p) => ({ ...p, id_producto: option?.value || "" }))}
+                            options={productoOptions}
+                            placeholder="Selecciona producto"
+                        />
+
+                    </div>
 
                     <Input
                         label="Nombre"
@@ -272,19 +275,22 @@ export default function PresentacionForm({ mode, item, productos, marcas, lineas
                     inputClassName="py-2"
                 />
 
-                <Select
-                    label="Proveedor"
-                    value={form.id_proveedor}
-                    onChange={(e) => setForm((p) => ({ ...p, id_proveedor: e.target.value }))}
-                    options={proveedoresOptions}
-                    placeholder="Selecciona proveedor"
-                />
+                <div>
+                    <p className="text-sm text-muted m-1">Proveedor</p>
+                    <SelectReact
+                        value={form.id_proveedor ? proveedoresOptions.find((o) => String(o.value) === String(form.id_proveedor)) : null}
+                        onChange={(option) => setForm((p) => ({ ...p, id_proveedor: option?.value || "" }))}
+                        options={proveedoresOptions}
+                        placeholder="Selecciona proveedor"
+                    />
+                </div>
 
                 <Input
                     label={costoAnteriorLabel}
                     disabled
                     value={costoAnteriorValue}
                     inputClassName="py-2 bg-background"
+                    className="text-muted"
                 />
 
                 <div className="md:col-span-2 border-t border-b border-border pt-4 pb-8 mt-4">
@@ -342,73 +348,75 @@ export default function PresentacionForm({ mode, item, productos, marcas, lineas
                     </div>
                 </div>
 
-                <Select
-                    label="Marca"
-                    value={form.id_marca}
-                    onChange={(e) => setForm((p) => ({ ...p, id_marca: e.target.value }))}
-                    options={marcaOptions}
-                    placeholder="Selecciona marca"
-                />
+                <div>
+                    <p className="text-sm text-muted m-1">Marca</p>
+                    <SelectReact
+                        value={form.id_marca ? marcaOptions.find((o) => String(o.value) === String(form.id_marca)) : null}
+                        onChange={(option) => setForm((p) => ({ ...p, id_marca: option?.value || "" }))}
+                        options={marcaOptions}
+                        placeholder="Selecciona marca"
+                    />
+                </div>
 
-                <Select
-                    label="Linea"
-                    value={form.id_linea}
-                    onChange={(e) => setForm((p) => ({ ...p, id_linea: e.target.value }))}
-                    options={lineaOptions}
-                    placeholder="Selecciona linea"
-                />
+                <div>
+                    <p className="text-sm text-muted m-1">Linea</p>
+                    <SelectReact
+                        value={form.id_linea ? lineaOptions.find((o) => String(o.value) === String(form.id_linea)) : null}
+                        onChange={(option) => setForm((p) => ({ ...p, id_linea: option?.value || "" }))}
+                        options={lineaOptions}
+                        placeholder="Selecciona linea"
+                    />
+                </div>
 
-                <Select
-                    label="Familia"
-                    value={form.id_familia}
-                    onChange={(e) => setForm((p) => ({ ...p, id_familia: e.target.value }))}
-                    options={familiaOptions}
-                    placeholder="Selecciona familia"
-                />
+                <div>
+                    <p className="text-sm text-muted m-1">Familia</p>
+                    <SelectReact
+                        value={form.id_familia ? familiaOptions.find((o) => String(o.value) === String(form.id_familia)) : null}
+                        onChange={(option) => setForm((p) => ({ ...p, id_familia: option?.value || "" }))}
+                        options={familiaOptions}
+                        placeholder="Selecciona familia"
+                    />
+                </div>
 
-                <Select
-                    label="Ubicacion"
-                    value={form.ubicacion}
-                    onChange={(e) => setForm((p) => ({ ...p, ubicacion: e.target.value }))}
-                    options={[
-                        { value: "tienda", label: "Tienda" },
-                        { value: "almacen", label: "Almacen" },
-                    ]}
-                    placeholder="Selecciona ubicacion"
-                />
+                <div>
+                    <p className="text-sm text-muted m-1">Almacén</p>
+                    <SelectReact
+                        value={form.id_almacen ? almacenOptions.find((o) => String(o.value) === String(form.id_almacen)) : null}
+                        onChange={(option) => setForm((p) => ({ ...p, id_almacen: option?.value || "", id_rack: "", id_nivel: "", id_seccion: "" }))}
+                        options={almacenOptions}
+                        placeholder="Selecciona almacén"
+                    />
+                </div>
 
-                <Select
-                    label="Almacen"
-                    value={form.id_almacen}
-                    onChange={(e) => setForm((p) => ({ ...p, id_almacen: e.target.value, id_rack: "", id_nivel: "", id_seccion: "" }))}
-                    options={almacenOptions}
-                    placeholder="Selecciona almacen"
-                />
+                <div>
+                    <p className="text-sm text-muted m-1">Rack</p>
+                    <SelectReact
+                        value={form.id_rack ? rackOptions.find((o) => String(o.value) === String(form.id_rack)) : null}
+                        onChange={(option) => setForm((p) => ({ ...p, id_rack: option?.value || "", id_nivel: "", id_seccion: "" }))}
+                        options={rackOptions}
+                        placeholder="Selecciona rack"
+                    />
+                </div>
 
-                <Select
-                    label="Rack"
-                    value={form.id_rack}
-                    onChange={(e) => setForm((p) => ({ ...p, id_rack: e.target.value, id_nivel: "", id_seccion: "" }))}
-                    options={rackOptions}
-                    placeholder="Selecciona rack"
-                />
+                <div>
+                    <p className="text-sm text-muted m-1">Nivel</p>
+                    <SelectReact
+                        value={form.id_nivel ? nivelOptions.find((o) => String(o.value) === String(form.id_nivel)) : null}
+                        onChange={(option) => setForm((p) => ({ ...p, id_nivel: option?.value || "", id_seccion: "" }))}
+                        options={nivelOptions}
+                        placeholder="Selecciona nivel"
+                    />
+                </div>
 
-
-                <Select
-                    label="Nivel"
-                    value={form.id_nivel}
-                    onChange={(e) => setForm((p) => ({ ...p, id_nivel: e.target.value, id_seccion: "" }))}
-                    options={nivelOptions}
-                    placeholder="Selecciona nivel"
-                />
-
-                <Select
-                    label="Seccion"
-                    value={form.id_seccion}
-                    onChange={(e) => setForm((p) => ({ ...p, id_seccion: e.target.value }))}
-                    options={seccionOptions}
-                    placeholder="Selecciona seccion"
-                />
+                <div>
+                    <p className="text-sm text-muted m-1">Seccion</p>
+                    <SelectReact
+                        value={form.id_seccion ? seccionOptions.find((o) => String(o.value) === String(form.id_seccion)) : null}
+                        onChange={(option) => setForm((p) => ({ ...p, id_seccion: option?.value || "" }))}
+                        options={seccionOptions}
+                        placeholder="Selecciona seccion"
+                    />
+                </div>
 
                 <label className="md:col-span-2 flex items-center gap-2 text-sm text-primary mt-1">
                     <input type="checkbox" checked={form.activo} onChange={(e) => setForm((p) => ({ ...p, activo: e.target.checked }))} />

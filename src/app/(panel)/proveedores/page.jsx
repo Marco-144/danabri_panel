@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, ChevronLeft, ChevronRight, Loader, AlertTriangle, Plus, Pencil, Eye, Trash } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Loader, AlertTriangle, Plus, Pencil, Eye, Trash, Store, CheckCircle2, XCircle } from "lucide-react";
 import { useState, useEffect, Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -9,6 +9,7 @@ import { getCatalogosProveedores } from "@/services/configuracionService";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import PageTitle from "@/components/ui/PageTitle";
+import StatKpiCard from "@/components/ui/StatKpiCard";
 import { FilterPopover, FilterChip } from "@/components/ui/FilterPopover";
 
 import AgregarProveedorView from "./AgregarProveedorView";
@@ -121,6 +122,12 @@ function ProveedoresListView() {
             data.map((proveedor) => String(proveedor.metodo_pago || "").trim()).filter(Boolean)
         )).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
     }, [data]);
+
+    const proveedoresActivos = useMemo(
+        () => data.filter((p) => p.activo === 1 || p.activo === "1" || p.activo === true).length,
+        [data]
+    );
+    const proveedoresInactivos = Math.max(0, data.length - proveedoresActivos);
 
     const estadosDisponibles = useMemo(() => {
         return Array.from(new Set(
@@ -254,6 +261,27 @@ function ProveedoresListView() {
                     </Link>
                 )}
             />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
+                <StatKpiCard
+                    icon={<Store size={20} />}
+                    title="Total Proveedores"
+                    value={data.length}
+                    tone="default"
+                />
+                <StatKpiCard
+                    icon={<CheckCircle2 size={20} />}
+                    title="Activos"
+                    value={proveedoresActivos}
+                    tone="success"
+                />
+                <StatKpiCard
+                    icon={<XCircle size={20} />}
+                    title="Inactivos"
+                    value={proveedoresInactivos}
+                    tone={proveedoresInactivos > 0 ? "warning" : "info"}
+                />
+            </div>
 
             {/* Filtros */}
             <div className="p-4 rounded-2xl flex flex-col md:flex-row mb-4 gap-3 md:items-center">

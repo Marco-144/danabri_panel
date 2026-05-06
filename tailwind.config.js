@@ -5,6 +5,10 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        oswald: ['Oswald', 'sans-serif'],
+        inter: ['Inter', 'sans-serif'],
+      },
       colors: {
         primary: "#293a42",
         secondary: "#B7C9D2",
@@ -19,6 +23,8 @@ module.exports = {
 
         // extras útiles para UI
         border: "#E5E7EB",
+        middleborder: "#EFF0F2",
+        lightborder: "#f9f9f9",
         muted: "#6B7280",
       },
       borderRadius: {

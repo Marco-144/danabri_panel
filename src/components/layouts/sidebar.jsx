@@ -280,6 +280,33 @@ export default function Sidebar() {
                 <Users size={16} />
                 Lista de Clientes
               </Link>
+              <Link
+                href="/clientes/cotizaciones"
+                className={`${subLinkBaseClass} ${pathname === "/clientes/cotizaciones" || pathname.startsWith("/clientes/cotizaciones/")
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <FileText size={16} />
+                Cotizaciones de Clientes
+              </Link>
+              <Link
+                href="/clientes/remisiones"
+                className={`${subLinkBaseClass} ${pathname === "/clientes/remisiones" || pathname.startsWith("/clientes/remisiones/")
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <Combine size={16} />
+                Remisiones de Clientes
+              </Link>
+              <Link
+                href="/clientes/abonos"
+                className={`${subLinkBaseClass} ${pathname === "/clientes/abonos" || pathname.startsWith("/clientes/abonos/")
+                  ? "bg-accent text-white font-semibold"
+                  : "text-gray-300 hover:bg-slidehover hover:text-white"
+                  }`}>
+                <CircleDollarSign size={16} />
+                Abonos de Clientes
+              </Link>
             </div>
           </div>
         </div>
@@ -411,7 +438,7 @@ export default function Sidebar() {
             : "text-gray-300 hover:bg-slidehover hover:text-white"
             }`}>
           <ShoppingBag size={16} />
-          <span>Ventas</span>
+          <span>Ventas de POS</span>
         </Link>
 
         <Link

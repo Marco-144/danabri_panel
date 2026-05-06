@@ -16,6 +16,7 @@ const DEFAULT_FILTERS = {
 const EMPTY_FORM = {
     nombre: "",
     nombre_fiscal: "",
+    pago_habitual: "",
     rfc: "",
     direccion: "",
     colonia: "",
@@ -23,6 +24,19 @@ const EMPTY_FORM = {
     estado: "",
     cp: "",
 };
+
+function fmtDate(value) {
+    if (!value) return "-";
+    const text = String(value).trim();
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+        return `Día ${Number(match[3])} del mes`;
+    }
+
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return "-";
+    return `Día ${date.getDate()} del mes`;
+}
 
 export default function EmpresasPage() {
     return <EmpresasListView />;
@@ -84,7 +98,10 @@ function EmpresasListView() {
                 (filters.has_rfc === "1" && hasRfc) ||
                 (filters.has_rfc === "0" && !hasRfc);
 
-            return bySearch && byRfc;
+            const cpFilter = String(filters.cp || "").trim();
+            const byCp = !cpFilter || String(empresa.cp || "").includes(cpFilter);
+
+            return bySearch && byRfc && byCp;
         });
     }, [empresas, searchTerm, filters]);
 
@@ -120,6 +137,7 @@ function EmpresasListView() {
         setFormData({
             nombre: empresa.nombre || "",
             nombre_fiscal: empresa.nombre_fiscal || "",
+            pago_habitual: empresa.pago_habitual || "",
             rfc: empresa.rfc || "",
             direccion: empresa.direccion || "",
             colonia: empresa.colonia || "",
@@ -180,6 +198,7 @@ function EmpresasListView() {
         const payload = {
             nombre: String(formData.nombre || "").trim(),
             nombre_fiscal: String(formData.nombre_fiscal || "").trim(),
+            pago_habitual: String(formData.pago_habitual || "").trim(),
             rfc: String(formData.rfc || "").trim(),
             direccion: String(formData.direccion || "").trim(),
             colonia: String(formData.colonia || "").trim(),
@@ -251,6 +270,7 @@ function EmpresasListView() {
             <PageTitle
                 title="Empresas"
                 subtitle="Lista de empresas"
+                icon={<Building2 size={20} />}
                 actions={(
                     <Button variant="primary" className="rounded-xl shadow-sm gap-2" onClick={openCreateModal}>
                         <Plus size={16} />
@@ -382,6 +402,12 @@ function EmpresasListView() {
                                 onChange={(e) => setFormData((prev) => ({ ...prev, rfc: e.target.value }))}
                             />
                             <Input
+                                label="Pago habitual (opcional)"
+                                type="date"
+                                value={formData.pago_habitual}
+                                onChange={(e) => setFormData((prev) => ({ ...prev, pago_habitual: e.target.value }))}
+                            />
+                            <Input
                                 label="Código postal"
                                 value={formData.cp}
                                 onChange={(e) => setFormData((prev) => ({ ...prev, cp: e.target.value }))}
@@ -462,6 +488,7 @@ function EmpresasFiltersInline({ value, onApply, onClear }) {
                     setOpen(nextOpen);
                 }}
                 panelClassName="w-[340px]"
+                triggerLabel="Filtros"
                 onApply={handleApply}
                 onClear={handleClear}
             >
@@ -473,6 +500,13 @@ function EmpresasFiltersInline({ value, onApply, onClear }) {
                         <FilterChip active={draft.has_rfc === "0"} onClick={() => setDraft((prev) => ({ ...prev, has_rfc: "0" }))}>Sin RFC</FilterChip>
                     </div>
                 </div>
+
+                <Input
+                    label="Código postal"
+                    value={draft.cp}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, cp: e.target.value }))}
+                    placeholder="Ej. 27000"
+                />
 
             </FilterPopover>
         </div>
@@ -487,6 +521,7 @@ function EmpresaTableInline({ data, onEdit, onDelete, disabled }) {
                     <th className="text-left p-3">ID</th>
                     <th className="text-left p-3">Nombre</th>
                     <th className="text-left p-3">Nombre fiscal</th>
+                    <th className="text-left p-3">Pago habitual</th>
                     <th className="text-left p-3">RFC</th>
                     <th className="text-left p-3">Dirección</th>
                     <th className="text-left p-3">Colonia</th>
@@ -500,7 +535,7 @@ function EmpresaTableInline({ data, onEdit, onDelete, disabled }) {
             <tbody>
                 {data.length === 0 && (
                     <tr>
-                        <td colSpan={10} className="p-6 text-center text-muted">No hay empresas para mostrar.</td>
+                        <td colSpan={11} className="p-6 text-center text-muted">No hay empresas para mostrar.</td>
                     </tr>
                 )}
 
@@ -509,6 +544,7 @@ function EmpresaTableInline({ data, onEdit, onDelete, disabled }) {
                         <td className="p-3">{empresa.id_empresa}</td>
                         <td className="p-3">{empresa.nombre}</td>
                         <td className="p-3">{empresa.nombre_fiscal}</td>
+                        <td className="p-3">{fmtDate(empresa.pago_habitual)}</td>
                         <td className="p-3">{empresa.rfc || "-"}</td>
                         <td className="p-3">{empresa.direccion || "-"}</td>
                         <td className="p-3">{empresa.colonia || "-"}</td>

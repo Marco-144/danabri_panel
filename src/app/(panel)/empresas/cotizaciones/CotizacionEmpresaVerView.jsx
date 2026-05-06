@@ -171,6 +171,7 @@ export default function CotizacionEmpresaVerView({ id }) {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 <FieldCard label="Empresa" value={data.empresa_nombre} />
                 <FieldCard label="Usuario" value={data.usuario_nombre} />
+                <FieldCard label="Tipo" value={String(data.tipo_presentacion || "pieza").toUpperCase()} />
                 <FieldCard label="Fecha emision" value={fmtDate(data.fecha_emision)} />
                 <FieldCard label="Vigencia" value={`${data.vigencia_dias} dias`} />
                 <FieldCard label="Total sin IVA" value={fmtMoney(data.total)} />
@@ -189,14 +190,12 @@ export default function CotizacionEmpresaVerView({ id }) {
                             <th className="text-right p-3">Precio sin IVA</th>
                             <th className="text-right p-3">Precio con IVA</th>
                             <th className="text-right p-3">Total sin IVA</th>
-                            <th className="text-right p-3">Piso</th>
-                            <th className="text-right p-3">Bodega</th>
                         </tr>
                     </thead>
                     <tbody>
                         {(data.detalles || []).length === 0 ? (
                             <tr>
-                                <td colSpan={10} className="p-6 text-center text-muted">Sin partidas</td>
+                                <td colSpan={8} className="p-6 text-center text-muted">Sin partidas</td>
                             </tr>
                         ) : (data.detalles || []).map((line) => (
                             <tr key={line.id_detalle} className="border-t border-border hover:bg-background/40">
@@ -208,8 +207,6 @@ export default function CotizacionEmpresaVerView({ id }) {
                                 <td className="p-3 text-right">{fmtMoney(line.precio_sin_iva)}</td>
                                 <td className="p-3 text-right">{fmtMoney(line.precio_con_iva)}</td>
                                 <td className="p-3 text-right font-semibold text-primary">{fmtMoney(line.total)}</td>
-                                <td className="p-3 text-right">{line.piso ?? "-"}</td>
-                                <td className="p-3 text-right">{line.bodega ?? "-"}</td>
                             </tr>
                         ))}
                     </tbody>

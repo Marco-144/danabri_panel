@@ -209,6 +209,7 @@ export async function cerrarFacturaInventario(id_factura) {
 
         const [filasFactura] = await conn.execute(
             `SELECT id_factura_proveedor, saldo_pendiente, total, id_orden_compra, id_almacen, inventario_cerrado_at
+                    , folio_factura
              FROM facturas_proveedor
              WHERE id_factura_proveedor = ?
              FOR UPDATE`,
@@ -255,9 +256,9 @@ export async function cerrarFacturaInventario(id_factura) {
             const idOrigen = idFactura;
             await conn.execute(
                 `INSERT INTO movimientos_inventario
-                    (id_almacen, id_presentacion, tipo, cantidad, origen, id_origen)
-                 VALUES (?, ?, 'entrada', ?, 'compra', ?)`,
-                [factura.id_almacen, idPresentacion, cantidad, idOrigen]
+                    (id_almacen, id_presentacion, tipo, cantidad, origen, id_origen, nota)
+                 VALUES (?, ?, 'entrada', ?, 'compra', ?, ?)`,
+                [factura.id_almacen, idPresentacion, cantidad, idOrigen, `Entrada por compra factura ${factura.folio_factura || idFactura}`]
             );
         }
 

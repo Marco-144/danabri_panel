@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Check, Eye, Loader, Plus, X } from "lucide-react";
+import { Eye, Funnel, Loader, Plus, X, AlertCircle, Wallet, CircleDollarSign, Check, Search } from "lucide-react";
+import StatKpiCard from "@/components/ui/StatKpiCard";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
+import { FilterPopover, FilterChip } from "@/components/ui/FilterPopover";
 import PageTitle from "@/components/ui/PageTitle";
 import { getAuthToken, getAuthUserFromToken, isTokenExpired } from "@/services/auth";
 import { deleteAbonoEmpresa, getAbonosEmpresas, registrarAbonoEmpresa } from "@/services/abonosEmpresasService";
@@ -21,13 +23,6 @@ function fmtDate(value) {
     return new Date(value).toLocaleDateString("es-MX");
 }
 
-function getDias(fecha) {
-    if (!fecha) return null;
-    const hoy = new Date();
-    const lim = new Date(fecha);
-    const ms = lim.setHours(0, 0, 0, 0) - hoy.setHours(0, 0, 0, 0);
-    return Math.round(ms / 86400000);
-}
 
 export default function AbonosEmpresasPage() {
     const searchParams = useSearchParams();
@@ -39,7 +34,13 @@ export default function AbonosEmpresasPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
     const [search, setSearch] = useState("");
-    const [idRemisionFilter, setIdRemisionFilter] = useState(remisionFromQuery);
+    const [filters, setFilters] = useState({
+        id_remision_empresa: remisionFromQuery,
+        metodo_pago: "",
+        desde: "",
+        hasta: "",
+    });
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     const [modalOpen, setModalOpen] = useState(false);
     const [form, setForm] = useState({
@@ -55,8 +56,8 @@ export default function AbonosEmpresasPage() {
         try {
             setLoading(true);
             const [abonosData, remisionesData] = await Promise.all([
-                getAbonosEmpresas({ search, id_remision_empresa: idRemisionFilter }),
-                getRemisionesEmpresas({ facturada: "1" }),
+                getAbonosEmpresas({ search, id_remision_empresa: filters.id_remision_empresa }),
+                getRemisionesEmpresas(),
             ]);
 
             setAbonos(Array.isArray(abonosData) ? abonosData : []);
@@ -67,21 +68,52 @@ export default function AbonosEmpresasPage() {
         } finally {
             setLoading(false);
         }
-    }, [search, idRemisionFilter]);
+    }, [search, filters.id_remision_empresa]);
 
     useEffect(() => {
         loadData();
     }, [loadData]);
+
+    useEffect(() => {
+        setForm((prev) => ({
+            ...prev,
+            id_remision_empresa: filters.id_remision_empresa || remisionFromQuery || prev.id_remision_empresa || "",
+        }));
+    }, [filters.id_remision_empresa, remisionFromQuery]);
 
     const remisionesPendientes = useMemo(
         () => remisiones.filter((r) => Number(r.saldo_pendiente || 0) > 0),
         [remisiones]
     );
 
+    const remisionesConSaldoCount = useMemo(() => remisionesPendientes.length, [remisionesPendientes]);
+    const totalSaldoRemisiones = useMemo(() => remisionesPendientes.reduce((acc, r) => acc + Number(r.saldo_pendiente || 0), 0), [remisionesPendientes]);
+    const abonosCount = useMemo(() => abonos.length, [abonos]);
+    const totalAbonos = useMemo(() => abonos.reduce((acc, a) => acc + Number(a.monto || 0), 0), [abonos]);
+
+    const filteredAbonos = useMemo(() => {
+        return abonos.filter((row) => {
+            const byMetodo = !filters.metodo_pago || String(row.metodo_pago || "") === filters.metodo_pago;
+            const rowDate = String(row.fecha_abono || "").slice(0, 10);
+            const byDesde = !filters.desde || (rowDate && rowDate >= filters.desde);
+            const byHasta = !filters.hasta || (rowDate && rowDate <= filters.hasta);
+            return byMetodo && byDesde && byHasta;
+        });
+    }, [abonos, filters]);
+
     const selectedRemision = useMemo(
         () => remisiones.find((r) => String(r.id_remision_empresa) === String(form.id_remision_empresa)),
         [remisiones, form.id_remision_empresa]
     );
+
+    function handleOpenModal() {
+        setError("");
+        setForm((prev) => ({
+            ...prev,
+            id_remision_empresa: filters.id_remision_empresa || remisionFromQuery || prev.id_remision_empresa || "",
+        }));
+        setModalOpen(true);
+    }
 
     async function handleRegistrarAbono(event) {
         event.preventDefault();
@@ -100,17 +132,42 @@ export default function AbonosEmpresasPage() {
             return;
         }
 
+        // client-side validations
+        if (!form.id_remision_empresa) {
+            setError("Selecciona una remisión para abonar");
+            return;
+        }
+
+        const montoNum = Number(form.monto || 0);
+        if (!montoNum || montoNum <= 0) {
+            setError("Ingresa un monto válido");
+            return;
+        }
+
+        const rem = selectedRemision;
+        if (!rem) {
+            setError("La remisión seleccionada no está disponible");
+            return;
+        }
+
+        if (montoNum > Number(rem.saldo_pendiente || 0)) {
+            setError(`El monto no puede ser mayor al saldo pendiente (${fmtMoney(rem.saldo_pendiente)})`);
+            return;
+        }
+
         try {
             setSaving(true);
-            await registrarAbonoEmpresa({
+
+            const resp = await registrarAbonoEmpresa({
                 ...form,
                 id_usuario: Number(idUsuario),
-                monto: Number(form.monto || 0),
+                monto: montoNum,
             });
 
+            // close modal and reset form
             setModalOpen(false);
             setForm({
-                id_remision_empresa: remisionFromQuery,
+                id_remision_empresa: filters.id_remision_empresa || remisionFromQuery,
                 fecha_abono: new Date().toISOString().slice(0, 10),
                 monto: "",
                 metodo_pago: "transferencia",
@@ -118,7 +175,16 @@ export default function AbonosEmpresasPage() {
                 observaciones: "",
             });
 
+            // reload lists (abonos + remisiones)
             await loadData();
+
+            // clear previous errors
+            setError("");
+
+            // optional: if remision fully paid, show a short confirmation
+            if (resp && resp.saldo_pendiente === 0) {
+                // keep UI minimal; set a non-error success message in error state cleared above
+            }
         } catch (e) {
             setError(e.message || "No se pudo registrar el abono");
         } finally {
@@ -143,12 +209,23 @@ export default function AbonosEmpresasPage() {
             <PageTitle
                 title="Abonos de Empresas"
                 subtitle="Pagos parciales/totales por remision facturada"
+                icon={<CircleDollarSign size={20} />}
                 actions={(
                     <div className="flex gap-2">
                         <Link href="/empresas/remisiones">
                             <Button variant="outline">Ir a Remisiones</Button>
                         </Link>
-                        <Button className="gap-2" onClick={() => setModalOpen(true)}>
+                        <Button
+                            className="gap-2"
+                            onClick={async () => {
+                                try {
+                                    await loadData();
+                                } catch {
+                                    /* ignore */
+                                }
+                                handleOpenModal();
+                            }}
+                        >
                             <Plus size={16} /> Registrar Abono
                         </Button>
                     </div>
@@ -157,29 +234,80 @@ export default function AbonosEmpresasPage() {
 
             {error ? <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div> : null}
 
-            <div className="p-4 bg-white rounded-2xl border border-border shadow-card flex flex-col lg:flex-row gap-3 lg:items-end">
-                <Input
-                    label="Buscar"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Empresa, folio remision/factura, referencia"
-                    className="w-full lg:max-w-[420px]"
-                />
+            <div className="p-4">
+                <div className="flex flex-col md:flex-row gap-3 md:items-center">
+                    <div className="relative inline-block w-full md:w-[420px]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+                        <Input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Empresa, folio remision/factura, referencia"
+                            inputClassName="bg-white text-primary py-2.5 pl-10 pr-4 rounded-full"
+                        />
+                    </div>
 
-                <Select
-                    label="Remision"
-                    value={idRemisionFilter}
-                    onChange={(e) => setIdRemisionFilter(e.target.value)}
-                    options={[
-                        { value: "", label: "Todas" },
-                        ...remisiones.map((r) => ({
-                            value: String(r.id_remision_empresa),
-                            label: `${r.folio_remision} - ${r.empresa_nombre}`,
-                        })),
-                    ]}
-                />
+                    <div className="md:ml-auto flex items-center gap-2">
+                        <FilterPopover
+                            open={filtersOpen}
+                            onOpenChange={setFiltersOpen}
+                            triggerVariant="ghost"
+                            triggerClassName="px-3 py-2"
+                            triggerContent={<span className="flex items-center gap-2"><Funnel size={16} /></span>}
+                            panelClassName="w-[340px]"
+                            panelPositionClassName="right-0 top-full"
+                            onApply={() => setFiltersOpen(false)}
+                            onClear={() => setFilters({ id_remision_empresa: remisionFromQuery, metodo_pago: "", desde: "", hasta: "" })}
+                        >
+                            <Input
+                                label="ID de remisión"
+                                value={filters.id_remision_empresa}
+                                onChange={(e) => setFilters((prev) => ({ ...prev, id_remision_empresa: e.target.value }))}
+                                placeholder="ID de remisión"
+                            />
 
-                <Button onClick={loadData}>Filtrar</Button>
+                            <div>
+                                <p className="text-xs text-muted mb-2">Método de pago</p>
+                                <div className="flex gap-2 flex-wrap">
+                                    <FilterChip active={filters.metodo_pago === ""} onClick={() => setFilters((prev) => ({ ...prev, metodo_pago: "" }))}>Todos</FilterChip>
+                                    <FilterChip active={filters.metodo_pago === "transferencia"} onClick={() => setFilters((prev) => ({ ...prev, metodo_pago: "transferencia" }))}>Transferencia</FilterChip>
+                                    <FilterChip active={filters.metodo_pago === "efectivo"} onClick={() => setFilters((prev) => ({ ...prev, metodo_pago: "efectivo" }))}>Efectivo</FilterChip>
+                                    <FilterChip active={filters.metodo_pago === "cheque"} onClick={() => setFilters((prev) => ({ ...prev, metodo_pago: "cheque" }))}>Cheque</FilterChip>
+                                    <FilterChip active={filters.metodo_pago === "tarjeta"} onClick={() => setFilters((prev) => ({ ...prev, metodo_pago: "tarjeta" }))}>Tarjeta</FilterChip>
+                                </div>
+                            </div>
+
+                            <Input label="Fecha desde" type="date" value={filters.desde} onChange={(e) => setFilters((prev) => ({ ...prev, desde: e.target.value }))} />
+                            <Input label="Fecha hasta" type="date" value={filters.hasta} onChange={(e) => setFilters((prev) => ({ ...prev, hasta: e.target.value }))} />
+                        </FilterPopover>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <StatKpiCard
+                    icon={<AlertCircle size={20} />}
+                    title="Remisiones con saldo"
+                    value={remisionesConSaldoCount}
+                    tone={remisionesConSaldoCount > 0 ? "warning" : "success"}
+                />
+                <StatKpiCard
+                    icon={<Wallet size={20} />}
+                    title="Saldo Remisiones"
+                    value={fmtMoney(totalSaldoRemisiones)}
+                    tone={totalSaldoRemisiones > 0 ? "warning" : "success"}
+                />
+                <StatKpiCard
+                    icon={<Check size={20} />}
+                    title="Abonos registrados"
+                    value={filteredAbonos.length}
+                    tone={abonosCount > 0 ? "info" : "default"}
+                />
+                <StatKpiCard
+                    icon={<Wallet size={20} />}
+                    title="Total abonos"
+                    value={fmtMoney(filteredAbonos.reduce((acc, a) => acc + Number(a.monto || 0), 0))}
+                    tone={totalAbonos > 0 ? "success" : "default"}
+                />
             </div>
 
             <div className="bg-white rounded-2xl shadow-card border border-border overflow-x-auto">
@@ -200,9 +328,9 @@ export default function AbonosEmpresasPage() {
                     <tbody>
                         {loading ? (
                             <tr><td colSpan={9} className="p-6 text-center text-muted"><Loader className="inline animate-spin" size={16} /> Cargando...</td></tr>
-                        ) : abonos.length === 0 ? (
+                        ) : filteredAbonos.length === 0 ? (
                             <tr><td colSpan={9} className="p-6 text-center text-muted">Sin abonos</td></tr>
-                        ) : abonos.map((row) => (
+                        ) : filteredAbonos.map((row) => (
                             <tr key={row.id_abono_remision_empresa} className="border-t border-border hover:bg-background/50">
                                 <td className="p-3">{row.id_abono_remision_empresa}</td>
                                 <td className="p-3">{row.empresa_nombre}</td>
@@ -240,17 +368,21 @@ export default function AbonosEmpresasPage() {
                         <h3 className="text-lg font-semibold text-primary">Registrar abono</h3>
 
                         <Select
-                            label="Remision facturada *"
+                            label="Remision"
+                            placeholder="Selecciona remision"
                             value={form.id_remision_empresa}
                             onChange={(e) => setForm((prev) => ({ ...prev, id_remision_empresa: e.target.value }))}
-                            options={[
-                                { value: "", label: "Selecciona remision" },
-                                ...remisionesPendientes.map((r) => ({
-                                    value: String(r.id_remision_empresa),
-                                    label: `${r.folio_remision} - ${r.empresa_nombre} (Saldo ${fmtMoney(r.saldo_pendiente)})`,
-                                })),
-                            ]}
+                            options={remisionesPendientes.map((r) => ({
+                                value: String(r.id_remision_empresa),
+                                label: `${r.folio_remision} - ${r.empresa_nombre} (Saldo ${fmtMoney(r.saldo_pendiente)})`,
+                            }))}
                         />
+
+                        {remisiones.length === 0 ? (
+                            <div className="text-xs rounded-lg bg-amber-50 text-amber-900 px-3 py-2">
+                                No hay remisiones cargadas para mostrar. Revisa que existan remisiones facturadas.
+                            </div>
+                        ) : null}
 
                         {selectedRemision ? (
                             <div className="text-xs rounded-lg bg-blue-50 text-blue-900 px-3 py-2">

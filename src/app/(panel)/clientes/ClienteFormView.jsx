@@ -17,8 +17,28 @@ import {
 } from "@/services/clientsService";
 
 const USO_CFDI = [
-    { value: "P01", label: "Por cuenta propia" },
-    { value: "P02", label: "Terceros" },
+    { value: "601", label: "601 - General de Ley Personas Morales" },
+    { value: "603", label: "603 - Personas Morales con Fines no Lucrativos" },
+    { value: "605", label: "605 - Sueldos y Salarios e Ingresos Asimilados a Salarios" },
+    { value: "606", label: "606 - Arrendamiento" },
+    { value: "607", label: "607 - Régimen de Enajenación o Adquisición de Bienes" },
+    { value: "608", label: "608 - Demás ingresos" },
+    { value: "610", label: "610 - Residentes en el Extranjero sin Establecimiento Permanente en México" },
+    { value: "611", label: "611 - Ingresos por Dividendos (socios y accionistas)" },
+    { value: "612", label: "612 - Personas Físicas con Actividades Empresariales y Profesionales" },
+    { value: "614", label: "614 - Ingresos por intereses" },
+    { value: "615", label: "615 - Régimen de los ingresos por obtención de premios" },
+    { value: "616", label: "616 - Sin obligaciones fiscales" },
+    { value: "620", label: "620 - Sociedades Cooperativas de Producción que optan por diferir sus ingresos" },
+    { value: "621", label: "621 - Incorporación Fiscal (RIF)" },
+    { value: "622", label: "622 - Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras" },
+    { value: "623", label: "623 - Opcional para Grupos de Sociedades" },
+    { value: "624", label: "624 - Coordinados" },
+    { value: "625", label: "625 - Actividades Empresariales con ingresos a través de Plataformas Tecnológicas" },
+    { value: "626", label: "626 - Régimen Simplificado de Confianza (RESICO)" },
+    { value: "628", label: "628 - Hidrocarburos" },
+    { value: "629", label: "629 - Regímenes Fiscales Preferentes y Empresas Multinacionales" },
+    { value: "630", label: "630 - Enajenación de acciones en bolsa de valores" },
 ];
 
 export default function ClienteFormView({ data = {}, isEdit = false }) {
@@ -60,7 +80,7 @@ export default function ClienteFormView({ data = {}, isEdit = false }) {
 
     const tiposClienteOptions = catalogos.tipos_cliente.map((item) => ({
         value: item.nombre,
-        label: `${item.nombre} (Precio ${item.nivel_precio})`,
+        label: `Precio ${item.nivel_precio}`,
     }));
 
     const loadCatalogos = async () => {
@@ -158,7 +178,7 @@ export default function ClienteFormView({ data = {}, isEdit = false }) {
             <PageTitle
                 breadcrumb={`Clientes / ${isEdit ? "Editar" : "Crear"}`}
                 title={isEdit ? "Editar Cliente" : "Agregar Cliente"}
-                icon={UserPlus}
+                Icon={UserPlus}
                 actions={(
                     <Link href="/clientes">
                         <Button variant="primary" size="lg" className="rounded-xl shadow-sm">
@@ -189,7 +209,7 @@ export default function ClienteFormView({ data = {}, isEdit = false }) {
                             placeholder={girosOptions.length ? "Seleccionar" : "Sin giros configurados"}
                         />
                         <Select
-                            label="Tipo de cliente *"
+                            label="Precio de Lista*"
                             name="tipo_cliente"
                             value={form.tipo_cliente}
                             onChange={handleChange}

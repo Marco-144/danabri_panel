@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Loader2, ArrowRightLeft, SlidersHorizontal, Plus, Pencil, Trash2, Warehouse, Funnel } from "lucide-react";
-import Card from "@/components/ui/Card";
+import { Search, Loader2, ArrowRightLeft, SlidersHorizontal, Warehouse, Funnel } from "lucide-react";
 import PageTitle from "@/components/ui/PageTitle";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import { FilterPopover } from "@/components/ui/FilterPopover";
-import { getAlmacenes, getInventario, ajusteInventario, traspasoInventario, createInventario, updateInventario, deleteInventario } from "@/services/almacenesService";
+import { getAlmacenes, getInventario, ajusteInventario, traspasoInventario } from "@/services/almacenesService";
+import { getPresentacionesByProducto } from "@/services/productosService";
 
 export default function AlmacenesInventarioPage() {
     const [loading, setLoading] = useState(true);
@@ -25,7 +25,6 @@ export default function AlmacenesInventarioPage() {
 
     const [ajusteModal, setAjusteModal] = useState({ open: false, item: null });
     const [traspasoModal, setTraspasoModal] = useState({ open: false, item: null });
-    const [crudModal, setCrudModal] = useState({ open: false, mode: "create", item: null });
 
     const loadBase = useCallback(async () => {
         try {
@@ -74,14 +73,15 @@ export default function AlmacenesInventarioPage() {
 
     const generateOrigenId = () => Number(`${Date.now()}`.slice(-9));
 
-    async function onSubmitAjuste({ tipo, cantidad }) {
+    async function onSubmitAjuste({ id_presentacion_destino, cantidad_destino, nota }) {
         try {
             setSaving(true);
             await ajusteInventario({
                 id_almacen: ajusteModal.item.id_almacen,
                 id_presentacion: ajusteModal.item.id_presentacion,
-                tipo,
-                cantidad,
+                id_presentacion_destino,
+                cantidad_destino,
+                nota,
                 origen: "ajuste",
                 id_origen: generateOrigenId(),
             });
@@ -94,7 +94,7 @@ export default function AlmacenesInventarioPage() {
         }
     }
 
-    async function onSubmitTraspaso({ id_almacen_destino, cantidad }) {
+    async function onSubmitTraspaso({ id_almacen_destino, cantidad, nota }) {
         try {
             setSaving(true);
             await traspasoInventario({
@@ -102,6 +102,7 @@ export default function AlmacenesInventarioPage() {
                 id_almacen_destino,
                 id_presentacion: traspasoModal.item.id_presentacion,
                 cantidad,
+                nota,
                 id_origen: generateOrigenId(),
             });
             setTraspasoModal({ open: false, item: null });
@@ -110,34 +111,6 @@ export default function AlmacenesInventarioPage() {
             setError(e.message || "Error al traspasar inventario");
         } finally {
             setSaving(false);
-        }
-    }
-
-    async function onSaveInventario(payload) {
-        try {
-            setSaving(true);
-            if (crudModal.mode === "create") {
-                await createInventario(payload);
-            } else {
-                await updateInventario(crudModal.item.id_inventario, payload);
-            }
-            setCrudModal({ open: false, mode: "create", item: null });
-            await loadInventario();
-        } catch (e) {
-            setError(e.message || "Error al guardar inventario");
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    async function onDeleteInventario(id) {
-        const ok = window.confirm("Seguro que deseas eliminar este registro de inventario?");
-        if (!ok) return;
-        try {
-            await deleteInventario(id);
-            await loadInventario();
-        } catch (e) {
-            setError(e.message || "Error al eliminar inventario");
         }
     }
 
@@ -155,7 +128,7 @@ export default function AlmacenesInventarioPage() {
             {error ? <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div> : null}
 
             {/* Controles de filtro y acciones */}
-            <Card className="p-4">
+            <div className="p-4">
                 <div className="flex flex-col md:flex-row gap-3 md:items-center">
                     <div className="relative inline-block w-full md:w-[420px]">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
@@ -204,15 +177,12 @@ export default function AlmacenesInventarioPage() {
                             </div>
                         </FilterPopover>
 
-                        {/* <Button variant="outline" onClick={loadInventario}>Actualizar</Button> */}
                     </div>
-
-                    <Button onClick={() => setCrudModal({ open: true, mode: "create", item: null })}><Plus size={14} /> Nuevo</Button>
                 </div>
-            </Card>
+            </div>
 
             <div className="bg-white rounded-2xl shadow-card border border-border overflow-x-auto">
-                <table className="w-full text-sm min-w-[980px]">
+                <table className="w-full text-sm min-w-[860px]">
                     <thead className="bg-background text-primary">
                         <tr>
                             <th className="text-left p-3">Producto</th>
@@ -250,12 +220,6 @@ export default function AlmacenesInventarioPage() {
                                                 <Button variant="ghost" size="sm" onClick={() => setTraspasoModal({ open: true, item: r })}>
                                                     <ArrowRightLeft size={15} /> Traspasar
                                                 </Button>
-                                                <Button variant="ghost" size="sm" onClick={() => setCrudModal({ open: true, mode: "edit", item: r })}>
-                                                    <Pencil size={14} />
-                                                </Button>
-                                                <Button variant="ghost" size="sm" onClick={() => onDeleteInventario(r.id_inventario)}>
-                                                    <Trash2 size={14} />
-                                                </Button>
                                             </div>
                                         </td>
                                     </tr>
@@ -275,17 +239,6 @@ export default function AlmacenesInventarioPage() {
                 />
             )}
 
-            {crudModal.open && (
-                <InventarioCrudModal
-                    mode={crudModal.mode}
-                    item={crudModal.item}
-                    almacenes={almacenes}
-                    saving={saving}
-                    onCancel={() => setCrudModal({ open: false, mode: "create", item: null })}
-                    onSubmit={onSaveInventario}
-                />
-            )}
-
             {traspasoModal.open && (
                 <TraspasoModal
                     item={traspasoModal.item}
@@ -299,13 +252,54 @@ export default function AlmacenesInventarioPage() {
     );
 }
 
-function InventarioCrudModal({ mode, item, almacenes, saving, onCancel, onSubmit }) {
-    const [form, setForm] = useState({
-        id_presentacion: item?.id_presentacion || "",
-        id_almacen: item?.id_almacen || "",
-        stock: item?.stock ?? 0,
-        stock_minimo: item?.stock_minimo ?? 0,
-    });
+function AjusteModal({ item, onCancel, onSubmit, saving }) {
+    const [presentaciones, setPresentaciones] = useState([]);
+    const [loadingPresentaciones, setLoadingPresentaciones] = useState(false);
+    const [idPresentacionDestino, setIdPresentacionDestino] = useState("");
+    const [cantidad, setCantidad] = useState("");
+    const [nota, setNota] = useState("");
+    const [localError, setLocalError] = useState("");
+
+    useEffect(() => {
+        let active = true;
+
+        async function loadPresentaciones() {
+            if (!item?.id_producto) return;
+
+            try {
+                setLoadingPresentaciones(true);
+                const data = await getPresentacionesByProducto(item.id_producto);
+                const opciones = (Array.isArray(data) ? data : []).filter((p) => String(p.id_presentacion) !== String(item.id_presentacion));
+
+                if (!active) return;
+
+                setPresentaciones(opciones);
+                setIdPresentacionDestino(String(opciones[0]?.id_presentacion || ""));
+                setLocalError(opciones.length > 0 ? "" : "Este producto no tiene otra presentacion para convertir");
+            } catch (error) {
+                if (active) {
+                    setLocalError(error.message || "No se pudieron cargar las presentaciones del producto");
+                }
+            } finally {
+                if (active) setLoadingPresentaciones(false);
+            }
+        }
+
+        loadPresentaciones();
+
+        return () => {
+            active = false;
+        };
+    }, [item?.id_producto, item?.id_presentacion]);
+
+    const destino = presentaciones.find((p) => String(p.id_presentacion) === String(idPresentacionDestino));
+    const piezasOrigen = Number(item?.piezas_por_presentacion || 1) || 1;
+    const piezasDestino = Number(destino?.piezas_por_presentacion || 0) || 0;
+    const cantidadDestino = Number(cantidad || 0);
+    const cantidadOrigenExacta = piezasOrigen > 0 ? (cantidadDestino * piezasDestino) / piezasOrigen : 0;
+    const conversionValida = Boolean(destino) && piezasDestino > 0 && Number.isInteger(cantidadDestino) && cantidadDestino > 0 && Number.isInteger(cantidadOrigenExacta) && cantidadOrigenExacta > 0;
+    const cantidadOrigen = conversionValida ? cantidadOrigenExacta : 0;
+    const submitDisabled = saving || loadingPresentaciones || !destino || !conversionValida;
 
     return (
         <div className="fixed inset-0 z-50 bg-primary/40 flex items-center justify-center p-4">
@@ -313,71 +307,54 @@ function InventarioCrudModal({ mode, item, almacenes, saving, onCancel, onSubmit
                 onSubmit={(e) => {
                     e.preventDefault();
                     onSubmit({
-                        id_presentacion: Number(form.id_presentacion),
-                        id_almacen: Number(form.id_almacen),
-                        stock: Number(form.stock),
-                        stock_minimo: Number(form.stock_minimo),
+                        id_presentacion_destino: Number(idPresentacionDestino),
+                        cantidad_destino: Number(cantidad),
+                        nota: nota.trim(),
                     });
                 }}
-                className="bg-white rounded-2xl border border-border shadow-card w-full max-w-lg p-5 space-y-4"
+                className="bg-white rounded-2xl border border-border shadow-card w-full max-w-xl p-5 space-y-4"
             >
-                <h3 className="text-lg font-semibold text-primary">{mode === "create" ? "Nuevo inventario" : "Editar inventario"}</h3>
-
-                <Input label="ID Presentacion" type="number" min="1" value={form.id_presentacion} onChange={(e) => setForm((p) => ({ ...p, id_presentacion: e.target.value }))} />
-
-                <Select
-                    label="Almacen"
-                    value={form.id_almacen}
-                    onChange={(e) => setForm((p) => ({ ...p, id_almacen: e.target.value }))}
-                    options={almacenes.map((a) => ({ value: a.id_almacen, label: `${a.nombre} (${a.tipo})` }))}
-                    placeholder="Seleccionar almacen"
-                />
-
-                <Input label="Stock" type="number" min="0" value={form.stock} onChange={(e) => setForm((p) => ({ ...p, stock: e.target.value }))} />
-                <Input label="Stock minimo" type="number" min="0" value={form.stock_minimo} onChange={(e) => setForm((p) => ({ ...p, stock_minimo: e.target.value }))} />
-
-                <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={onCancel}>Cancelar</Button>
-                    <Button type="submit" variant="accent" disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
-                </div>
-            </form>
-        </div>
-    );
-}
-
-function AjusteModal({ item, onCancel, onSubmit, saving }) {
-    const [tipo, setTipo] = useState("entrada");
-    const [cantidad, setCantidad] = useState("");
-
-    return (
-        <div className="fixed inset-0 z-50 bg-primary/40 flex items-center justify-center p-4">
-            <form
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    onSubmit({ tipo, cantidad: Number(cantidad) });
-                }}
-                className="bg-white rounded-2xl border border-border shadow-card w-full max-w-lg p-5 space-y-4"
-            >
-                <h3 className="text-lg font-semibold text-primary">Ajuste de inventario</h3>
+                <h3 className="text-lg font-semibold text-primary">Ajuste por conversión</h3>
                 <p className="text-sm text-muted">{item?.producto_nombre} / {item?.presentacion_nombre}</p>
 
                 <Select
-                    label="Tipo"
-                    value={tipo}
-                    onChange={(e) => setTipo(e.target.value)}
-                    options={[
-                        { value: "entrada", label: "Entrada" },
-                        { value: "salida", label: "Salida" },
-                        { value: "ajuste", label: "Ajuste" },
-                    ]}
-                    placeholder="Seleccionar"
+                    label="Presentacion destino"
+                    value={idPresentacionDestino}
+                    onChange={(e) => setIdPresentacionDestino(e.target.value)}
+                    options={presentaciones.map((p) => ({
+                        value: p.id_presentacion,
+                        label: `${p.nombre} (${p.piezas_por_presentacion} piezas)`,
+                    }))}
+                    placeholder={loadingPresentaciones ? "Cargando presentaciones..." : "Seleccionar destino"}
                 />
 
-                <Input label="Cantidad" type="number" step="1" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+                <Input
+                    label={`Cantidad destino (${destino?.nombre || "presentacion"})`}
+                    type="number"
+                    step="1"
+                    min="1"
+                    value={cantidad}
+                    onChange={(e) => setCantidad(e.target.value)}
+                />
+
+                <Input
+                    label="Motivo / nota (opcional)"
+                    value={nota}
+                    onChange={(e) => setNota(e.target.value)}
+                    placeholder="Describe por que se realiza la conversion"
+                />
+
+                <div className="rounded-xl border border-border bg-background p-3 text-sm text-primary space-y-1">
+                    <p><strong>Origen:</strong> {item?.presentacion_nombre} = {piezasOrigen} piezas</p>
+                    <p><strong>Destino:</strong> {destino ? `${destino.nombre} = ${piezasDestino} piezas` : "Selecciona una presentacion destino"}</p>
+                    <p><strong>Equivalencia:</strong> {conversionValida ? `Se descuentan ${cantidadOrigen} ${item?.presentacion_nombre} y se agregan ${cantidadDestino} ${destino?.nombre}` : "No se puede convertir exactamente con esta cantidad destino"}</p>
+                </div>
+
+                {localError ? <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{localError}</div> : null}
 
                 <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={onCancel}>Cancelar</Button>
-                    <Button type="submit" variant="accent" disabled={saving}>{saving ? "Guardando..." : "Aplicar"}</Button>
+                    <Button type="submit" variant="accent" disabled={submitDisabled}>{saving ? "Guardando..." : "Aplicar"}</Button>
                 </div>
             </form>
         </div>
@@ -387,14 +364,16 @@ function AjusteModal({ item, onCancel, onSubmit, saving }) {
 function TraspasoModal({ item, almacenes, onCancel, onSubmit, saving }) {
     const [idDestino, setIdDestino] = useState("");
     const [cantidad, setCantidad] = useState("");
+    const [nota, setNota] = useState("");
     const destinos = almacenes.filter((a) => String(a.id_almacen) !== String(item?.id_almacen));
+    const submitDisabled = saving || !idDestino || !cantidad || !nota.trim();
 
     return (
         <div className="fixed inset-0 z-50 bg-primary/40 flex items-center justify-center p-4">
             <form
                 onSubmit={(e) => {
                     e.preventDefault();
-                    onSubmit({ id_almacen_destino: Number(idDestino), cantidad: Number(cantidad) });
+                    onSubmit({ id_almacen_destino: Number(idDestino), cantidad: Number(cantidad), nota: nota.trim() });
                 }}
                 className="bg-white rounded-2xl border border-border shadow-card w-full max-w-lg p-5 space-y-4"
             >
@@ -410,10 +389,11 @@ function TraspasoModal({ item, almacenes, onCancel, onSubmit, saving }) {
                 />
 
                 <Input label="Cantidad" type="number" step="1" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+                <Input label="Motivo / nota" value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Describe por que se realiza el traspaso" />
 
                 <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={onCancel}>Cancelar</Button>
-                    <Button type="submit" variant="accent" disabled={saving}>{saving ? "Guardando..." : "Traspasar"}</Button>
+                    <Button type="submit" variant="accent" disabled={submitDisabled}>{saving ? "Guardando..." : "Traspasar"}</Button>
                 </div>
             </form>
         </div>

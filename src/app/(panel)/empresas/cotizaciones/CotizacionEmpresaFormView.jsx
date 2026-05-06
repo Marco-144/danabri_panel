@@ -83,10 +83,103 @@ function addDays(dateIso, days) {
     return date.toISOString().slice(0, 10);
 }
 
+function toDateOnly(value) {
+    if (!value) return "";
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    const text = String(value).trim();
+
+    const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+        return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    }
+
+    const esMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (esMatch) {
+        const dd = String(Number(esMatch[1])).padStart(2, "0");
+        const mm = String(Number(esMatch[2])).padStart(2, "0");
+        return `${esMatch[3]}-${mm}-${dd}`;
+    }
+
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) {
+        return "";
+    }
+
+    return parsed.toISOString().slice(0, 10);
+}
+
 function normalizeUnidad(value) {
     const unit = String(value || "").toLowerCase();
     if (["pieza", "caja", "paquete"].includes(unit)) return unit;
     return "pieza";
+}
+
+const TIPO_PRESENTACION_OPTIONS = [
+    { value: "pieza", label: "Pieza" },
+    { value: "caja", label: "Caja" },
+    { value: "paquete", label: "Paquete" },
+];
+
+const VIGENCIA_MODE_OPTIONS = [
+    { value: "dias", label: "Por dias" },
+    { value: "manual", label: "Fecha manual" },
+    { value: "pago_habitual", label: "Fecha pago habitual" },
+];
+
+const PAGO_HABITUAL_OFFSET_OPTIONS = [
+    { value: "0", label: "Siguiente pago" },
+    { value: "1", label: "Siguiente +1 mes" },
+    { value: "2", label: "Siguiente +2 meses" },
+];
+
+function addMonthsKeepingDay(baseDate, monthsToAdd, dayOfMonth) {
+    const year = baseDate.getUTCFullYear();
+    const month = baseDate.getUTCMonth();
+    const targetMonthIndex = month + Number(monthsToAdd || 0);
+    const lastDayOfTargetMonth = new Date(Date.UTC(year, targetMonthIndex + 1, 0)).getUTCDate();
+    const safeDay = Math.min(Number(dayOfMonth || 1), lastDayOfTargetMonth);
+    return new Date(Date.UTC(year, targetMonthIndex, safeDay));
+}
+
+function getReferenciaPagoHabitualDate({ fechaBase, pagoHabitual, mesesOffset = 0 }) {
+    const baseText = toDateOnly(fechaBase);
+    const pagoText = toDateOnly(pagoHabitual);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(baseText) || !/^\d{4}-\d{2}-\d{2}$/.test(pagoText)) {
+        return "";
+    }
+
+    const base = new Date(`${baseText}T00:00:00Z`);
+    const pago = new Date(`${pagoText}T00:00:00Z`);
+    if (Number.isNaN(base.getTime()) || Number.isNaN(pago.getTime())) {
+        return "";
+    }
+
+    const baseYear = base.getUTCFullYear();
+    const baseMonth = base.getUTCMonth();
+    const baseDay = base.getUTCDate();
+    const habitualDay = pago.getUTCDate();
+
+    const firstCandidate = addMonthsKeepingDay(
+        new Date(Date.UTC(baseYear, baseMonth, 1)),
+        baseDay <= habitualDay ? 0 : 1,
+        habitualDay
+    );
+    const finalCandidate = addMonthsKeepingDay(firstCandidate, Number(mesesOffset || 0), habitualDay);
+    return finalCandidate.toISOString().slice(0, 10);
+}
+
+function diffDays(startIso, endIso) {
+    const start = new Date(`${String(startIso || "").slice(0, 10)}T00:00:00Z`);
+    const end = new Date(`${String(endIso || "").slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return NaN;
+    }
+
+    return Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
 }
 
 function calcTotalBruto(lines) {
@@ -97,14 +190,20 @@ function calcTotalNeto(lines) {
     return to6(lines.reduce((acc, line) => acc + Number(line.total_neto || 0), 0));
 }
 
-function isFacturaQtyValid(cantidadSistema, cantidadFactura) {
-    const sistema = Number(cantidadSistema || 0);
-    const factura = Number(cantidadFactura || 0);
+function getQtyValidationFlags({ cantidadFactura, idAlmacen, stockAlmacen }) {
+    const factura = Number(cantidadFactura);
+    const isValidFacturaQty = Number.isInteger(factura) && factura > 0;
 
-    if (!Number.isInteger(sistema) || sistema <= 0) return false;
-    if (!Number.isInteger(factura) || factura <= 0) return false;
+    const isInvalidQty = !isValidFacturaQty;
 
-    return (factura % sistema === 0) || (sistema % factura === 0);
+    const hasSelectedAlmacen = Number(idAlmacen || 0) > 0;
+    const stock = Number(stockAlmacen || 0);
+    const exceedsStock = hasSelectedAlmacen && isValidFacturaQty && factura > stock;
+
+    return {
+        is_invalid_qty: isInvalidQty,
+        exceeds_stock_almacen: exceedsStock,
+    };
 }
 
 function buildPriceLevels(item) {
@@ -167,6 +266,9 @@ export default function CotizacionEmpresaFormView({ id }) {
 
     const [fechaEmision, setFechaEmision] = useState(today());
     const [vigenciaDias, setVigenciaDias] = useState("5");
+    const [vigenciaMode, setVigenciaMode] = useState("");
+    const [fechaVencimientoManual, setFechaVencimientoManual] = useState("");
+    const [pagoHabitualOffsetMeses, setPagoHabitualOffsetMeses] = useState("0");
     const [lineas, setLineas] = useState([]);
 
     useEffect(() => {
@@ -223,11 +325,15 @@ export default function CotizacionEmpresaFormView({ id }) {
                     id_empresa: data.id_empresa,
                     nombre: data.empresa_nombre,
                     nombre_fiscal: data.empresa_nombre,
+                    pago_habitual: toDateOnly(data.empresa_pago_habitual),
                 });
                 setEmpresaQuery(data.empresa_nombre || "");
 
                 setFechaEmision(String(data.fecha_emision || "").slice(0, 10));
-                setVigenciaDias(String(data.vigencia_dias || "30"));
+                const vigenciaLoaded = String(data.vigencia_dias || "30");
+                setVigenciaDias(vigenciaLoaded);
+                setFechaVencimientoManual(addDays(String(data.fecha_emision || "").slice(0, 10), Number(data.vigencia_dias || 0)));
+                setVigenciaMode("dias");
 
                 setLineas((data.detalles || []).map((line, index) => ({
                     uid: `${Date.now()}-${index}`,
@@ -237,6 +343,7 @@ export default function CotizacionEmpresaFormView({ id }) {
                     requerimiento: line.requerimiento || "",
                     cantidad_sistema: Number(line.cantidad_sistema || line.cantidad_factura || line.cantidad || 1),
                     cantidad_factura: Number(line.cantidad_factura || line.cantidad || 1),
+                    cantidad_factura_input: String(Number(line.cantidad_factura || line.cantidad || 1)),
                     unidad: normalizeUnidad(line.unidad),
                     piezas_por_presentacion: Number(line.piezas_por_presentacion || line.cantidad_sistema || line.cantidad_factura || line.cantidad || 1),
                     nivel_precio: 1,
@@ -250,8 +357,14 @@ export default function CotizacionEmpresaFormView({ id }) {
                     precio_manual_con_iva: to6(line.precio_con_iva || 0),
                     total_neto: to6(line.total || 0),
                     total_bruto: to6(Number(line.cantidad_factura || line.cantidad || 1) * Number(line.precio_con_iva || 0)),
-                    piso: Number(line.piso || 0),
-                    bodega: Number(line.bodega || 0),
+                    almacenes_stock: Array.isArray(line.almacenes_stock) ? line.almacenes_stock : [],
+                    id_almacen: line.id_almacen || "",
+                    stock_almacen: Number(line.stock_almacen || 0),
+                    ...getQtyValidationFlags({
+                        cantidadFactura: Number(line.cantidad_factura || line.cantidad || 1),
+                        idAlmacen: line.id_almacen || "",
+                        stockAlmacen: Number(line.stock_almacen || 0),
+                    }),
                 })));
 
                 setError("");
@@ -278,12 +391,36 @@ export default function CotizacionEmpresaFormView({ id }) {
         );
     }, [empresaOptions, empresaQuery]);
 
-    const fechaExpiracion = useMemo(() => {
+    const fechaExpiracionPorDias = useMemo(() => {
         if (!fechaEmision) return "";
         const dias = Number(vigenciaDias || 0);
         if (!Number.isInteger(dias) || dias <= 0) return "";
         return addDays(fechaEmision, dias);
     }, [fechaEmision, vigenciaDias]);
+
+    const fechaExpiracionPorPagoHabitual = useMemo(() => (
+        getReferenciaPagoHabitualDate({
+            fechaBase: fechaEmision,
+            pagoHabitual: selectedEmpresa?.pago_habitual,
+            mesesOffset: Number(pagoHabitualOffsetMeses || 0),
+        })
+    ), [fechaEmision, selectedEmpresa?.pago_habitual, pagoHabitualOffsetMeses]);
+
+    const fechaExpiracion = useMemo(() => {
+        if (!vigenciaMode) {
+            return "";
+        }
+
+        if (vigenciaMode === "manual") {
+            return String(fechaVencimientoManual || "").trim();
+        }
+
+        if (vigenciaMode === "pago_habitual") {
+            return fechaExpiracionPorPagoHabitual;
+        }
+
+        return fechaExpiracionPorDias;
+    }, [vigenciaMode, fechaVencimientoManual, fechaExpiracionPorPagoHabitual, fechaExpiracionPorDias]);
 
     function handleEmpresaInputChange(value) {
         setEmpresaQuery(value);
@@ -292,10 +429,18 @@ export default function CotizacionEmpresaFormView({ id }) {
     }
 
     function handleEmpresaOptionSelect(item) {
-        setSelectedEmpresa(item);
+        setSelectedEmpresa({
+            ...item,
+            pago_habitual: toDateOnly(item?.pago_habitual),
+        });
         setEmpresaQuery(String(item?.nombre || ""));
         setEmpresaDropdownOpen(false);
     }
+
+    const diasRestantes = useMemo(() => {
+        if (!fechaExpiracion) return NaN;
+        return diffDays(today(), fechaExpiracion);
+    }, [fechaExpiracion]);
 
     function addProducto(item) {
         const nivelesPrecio = buildPriceLevels(item);
@@ -309,6 +454,16 @@ export default function CotizacionEmpresaFormView({ id }) {
         const precioConIva = to6(nivelInicial.priceWithTax || (precioSinIva * (1 + IVA_RATE)));
         const cantidadFactura = 1;
         const cantidadSistema = Number(item.quantity || 1) || 1;
+        const almacenesStock = Array.isArray(item.almacenes_stock) ? item.almacenes_stock : [];
+        const almacenesSorted = [...almacenesStock].sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0));
+        const almacenPreferido = almacenesSorted[0] || null;
+        const idAlmacen = almacenPreferido ? Number(almacenPreferido.id_almacen) : "";
+        const stockAlmacen = almacenPreferido ? Number(almacenPreferido.stock || 0) : 0;
+        const qtyFlags = getQtyValidationFlags({
+            cantidadFactura,
+            idAlmacen,
+            stockAlmacen,
+        });
 
         setLineas((prev) => ([
             ...prev,
@@ -321,6 +476,7 @@ export default function CotizacionEmpresaFormView({ id }) {
                 requerimiento: "",
                 cantidad_sistema: cantidadSistema,
                 cantidad_factura: cantidadFactura,
+                cantidad_factura_input: String(cantidadFactura),
                 unidad: normalizeUnidad(item.tipo_presentacion || item.tax_unit),
                 piezas_por_presentacion: Number(item.piezas_por_presentacion || item.quantity || 1) || 1,
                 nivel_precio: Number(nivelInicial.level || 1),
@@ -329,8 +485,10 @@ export default function CotizacionEmpresaFormView({ id }) {
                 precio_manual_con_iva: precioConIva,
                 total_neto: to6(cantidadFactura * precioSinIva),
                 total_bruto: to6(cantidadFactura * precioConIva),
-                piso: Number(item.piso || 0),
-                bodega: Number(item.bodega || 0),
+                almacenes_stock: almacenesStock,
+                id_almacen: idAlmacen,
+                stock_almacen: stockAlmacen,
+                ...qtyFlags,
             },
         ]));
 
@@ -348,6 +506,30 @@ export default function CotizacionEmpresaFormView({ id }) {
 
             if (field === "requerimiento") {
                 return { ...line, requerimiento: value };
+            }
+
+            if (field === "unidad") {
+                return { ...line, unidad: normalizeUnidad(value) };
+            }
+
+            if (field === "id_almacen") {
+                const nextAlmacen = Number(value || 0);
+                const selectedAlmacen = (line.almacenes_stock || []).find(
+                    (almacen) => Number(almacen.id_almacen) === nextAlmacen
+                );
+                const nextStock = selectedAlmacen ? Number(selectedAlmacen.stock || 0) : 0;
+                const qtyFlags = getQtyValidationFlags({
+                    cantidadFactura: line.cantidad_factura,
+                    idAlmacen: nextAlmacen || "",
+                    stockAlmacen: nextStock,
+                });
+
+                return {
+                    ...line,
+                    id_almacen: nextAlmacen || "",
+                    stock_almacen: nextStock,
+                    ...qtyFlags,
+                };
             }
 
             if (field === "nivel_precio") {
@@ -370,21 +552,45 @@ export default function CotizacionEmpresaFormView({ id }) {
             }
 
             if (field === "cantidad_factura") {
-                const cantidadFactura = Number(value);
-                if (!Number.isInteger(cantidadFactura) || cantidadFactura <= 0) return line;
+                const inputValue = String(value ?? "");
+                if (!/^\d*$/.test(inputValue)) return line;
 
-                const cantidadSistema = Number(line.cantidad_sistema || 0);
-                const isInvalid = !isFacturaQtyValid(cantidadSistema, cantidadFactura);
+                if (inputValue === "") {
+                    const qtyFlags = getQtyValidationFlags({
+                        cantidadFactura: 0,
+                        idAlmacen: line.id_almacen,
+                        stockAlmacen: line.stock_almacen,
+                    });
+
+                    return {
+                        ...line,
+                        cantidad_factura_input: "",
+                        cantidad_factura: 0,
+                        total_neto: 0,
+                        total_bruto: 0,
+                        ...qtyFlags,
+                    };
+                }
+
+                const cantidadFactura = Number(inputValue);
+                if (!Number.isInteger(cantidadFactura)) return line;
+
+                const qtyFlags = getQtyValidationFlags({
+                    cantidadFactura,
+                    idAlmacen: line.id_almacen,
+                    stockAlmacen: line.stock_almacen,
+                });
 
                 const totalNeto = to6(cantidadFactura * Number(line.precio_manual_sin_iva || 0));
                 const totalBruto = to6(cantidadFactura * Number(line.precio_manual_con_iva || 0));
 
                 return {
                     ...line,
+                    cantidad_factura_input: inputValue,
                     cantidad_factura: cantidadFactura,
                     total_neto: totalNeto,
                     total_bruto: totalBruto,
-                    is_invalid_qty: isInvalid,
+                    ...qtyFlags,
                 };
             }
 
@@ -470,7 +676,11 @@ export default function CotizacionEmpresaFormView({ id }) {
         const rowsHtml = lineas.map((line, index) => {
             const unitPrice = includeIva ? line.precio_manual_con_iva : line.precio_manual_sin_iva;
             const amount = includeIva ? line.total_bruto : line.total_neto;
-            const descripcion = `${line.producto_nombre || ""}${line.presentacion_nombre ? `, ${line.presentacion_nombre}` : ""}`.trim() || line.descripcion_personalizada || "-";
+            const almacenSeleccionado = (line.almacenes_stock || []).find(
+                (almacen) => Number(almacen.id_almacen) === Number(line.id_almacen)
+            );
+            const descripcionBase = `${line.producto_nombre || ""}${line.presentacion_nombre ? `, ${line.presentacion_nombre}` : ""}`.trim() || line.descripcion_personalizada || "-";
+            const descripcion = `${descripcionBase} | Tipo: ${String(line.unidad || "pieza").toUpperCase()}${almacenSeleccionado ? ` | Almacen: ${almacenSeleccionado.nombre}` : ""}`;
 
             return `
                 <tr>
@@ -502,6 +712,7 @@ export default function CotizacionEmpresaFormView({ id }) {
                 <div class="meta">
                     <div><strong>Empresa:</strong> ${selectedEmpresa?.nombre || "-"}</div>
                     <div><strong>Fecha de emision:</strong> ${fechaEmision || "-"}</div>
+                    <div><strong>Fecha de vencimiento:</strong> ${fechaExpiracion || "-"}</div>
                     <div><strong>Vigencia:</strong> ${vigenciaDias || "-"} dias</div>
                     <div style="margin-top:8px;"><em>${includeIva ? "Los precios incluyen IVA." : "Los precios y totales estan expresados sin IVA."}</em></div>
                 </div>
@@ -543,9 +754,29 @@ export default function CotizacionEmpresaFormView({ id }) {
             return;
         }
 
-        const vigencia = Number(vigenciaDias);
+        if (!vigenciaMode) {
+            setError("Selecciona como calcular el vencimiento");
+            return;
+        }
+
+        if (vigenciaMode === "manual" && !fechaVencimientoManual) {
+            setError("Ingresa una fecha de vencimiento manual");
+            return;
+        }
+
+        if (vigenciaMode === "pago_habitual" && !selectedEmpresa?.pago_habitual) {
+            setError("La empresa no tiene pago habitual configurado");
+            return;
+        }
+
+        if (vigenciaMode === "pago_habitual" && !fechaExpiracion) {
+            setError("No se pudo calcular la fecha de vencimiento por pago habitual");
+            return;
+        }
+
+        const vigencia = diffDays(fechaEmision, fechaExpiracion);
         if (!Number.isInteger(vigencia) || vigencia <= 0) {
-            setError("La vigencia debe ser un entero mayor a cero");
+            setError("La fecha de vencimiento debe ser mayor a la fecha de emision");
             return;
         }
 
@@ -556,7 +787,13 @@ export default function CotizacionEmpresaFormView({ id }) {
 
         const invalidQty = lineas.find((line) => line.is_invalid_qty);
         if (invalidQty) {
-            setError("Hay partidas con cantidad factura invalida. Debe ser multiplo o divisor de cantidad sistema.");
+            setError("Hay partidas con cantidad factura invalida. Debe ser un entero mayor a cero y multiplo o divisor de cantidad sistema.");
+            return;
+        }
+
+        const exceedsStock = lineas.find((line) => line.exceeds_stock_almacen);
+        if (exceedsStock) {
+            setError("Hay partidas cuya cantidad factura supera el stock del almacen seleccionado.");
             return;
         }
 
@@ -575,9 +812,12 @@ export default function CotizacionEmpresaFormView({ id }) {
         const payload = {
             id_empresa: Number(selectedEmpresa.id_empresa),
             id_usuario: Number(authUser.id),
+            tipo_presentacion: normalizeUnidad(lineas[0]?.unidad || "pieza"),
             fecha_emision: fechaEmision,
             vigencia_dias: vigencia,
             detalles: lineas.map((line) => ({
+                id_presentacion: Number(line.id_presentacion || 0),
+                id_almacen: Number(line.id_almacen || 0),
                 descripcion_personalizada: String(line.descripcion_personalizada || "").trim(),
                 requerimiento: String(line.requerimiento || "").trim(),
                 cantidad_sistema: Number(line.cantidad_sistema || 0),
@@ -585,8 +825,6 @@ export default function CotizacionEmpresaFormView({ id }) {
                 unidad: normalizeUnidad(line.unidad),
                 precio_sin_iva: Number(line.precio_manual_sin_iva || 0),
                 precio_con_iva: Number(line.precio_manual_con_iva || 0),
-                piso: Number(line.piso || 0),
-                bodega: Number(line.bodega || 0),
             })),
         };
 
@@ -680,16 +918,54 @@ export default function CotizacionEmpresaFormView({ id }) {
                                 onChange={(event) => setFechaEmision(event.target.value)}
                             />
 
-                            <Input
-                                label="Vigencia (dias)"
-                                type="number"
-                                min="1"
-                                value={vigenciaDias}
-                                onChange={(event) => setVigenciaDias(event.target.value)}
+                            <Select
+                                label="Calcular vencimiento por"
+                                value={vigenciaMode}
+                                onChange={(event) => setVigenciaMode(event.target.value)}
+                                options={VIGENCIA_MODE_OPTIONS}
                             />
+
+                            {vigenciaMode === "dias" ? (
+                                <Input
+                                    label="Vigencia (dias)"
+                                    type="number"
+                                    min="1"
+                                    value={vigenciaDias}
+                                    onChange={(event) => setVigenciaDias(event.target.value)}
+                                    disabled={vigenciaMode !== "dias"}
+                                />
+                            ) : null}
+
+                            {vigenciaMode === "manual" ? (
+                                <Input
+                                    label="Fecha de vencimiento manual"
+                                    type="date"
+                                    value={fechaVencimientoManual}
+                                    onChange={(event) => setFechaVencimientoManual(event.target.value)}
+                                />
+                            ) : null}
+
+                            {vigenciaMode === "pago_habitual" ? (
+                                <>
+                                    <Input
+                                        label="Pago habitual de empresa"
+                                        type="date"
+                                        value={selectedEmpresa?.pago_habitual || ""}
+                                        readOnly
+                                    />
+                                    <Select
+                                        label="Referencia de pago"
+                                        value={pagoHabitualOffsetMeses}
+                                        onChange={(event) => setPagoHabitualOffsetMeses(event.target.value)}
+                                        options={PAGO_HABITUAL_OFFSET_OPTIONS}
+                                        disabled={!selectedEmpresa?.pago_habitual}
+                                    />
+                                </>
+                            ) : null}
 
                             <div className="mt-6 rounded-lg bg-blue-50 text-blue-900 px-3 py-2 text-sm">
                                 Expira el: <strong>{fechaExpiracion ? new Date(fechaExpiracion).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "-"}</strong>
+                                {Number.isNaN(diasRestantes) ? null : diasRestantes > 0 ? ` (faltan ${diasRestantes} dias)` : diasRestantes === 0 ? " (vence hoy)" : ` (vencida hace ${Math.abs(diasRestantes)} dias)`}
                             </div>
                         </div>
                     </div>
@@ -747,7 +1023,7 @@ export default function CotizacionEmpresaFormView({ id }) {
                     </div>
 
                     <div className="overflow-x-auto border border-border rounded-xl w-full">
-                        <table className="w-full min-w-[1450px] text-sm">
+                        <table className="w-full min-w-[1560px] text-sm">
                             <thead className="bg-background text-primary">
                                 <tr>
                                     <th className="text-center p-3 w-10">#</th>
@@ -760,15 +1036,15 @@ export default function CotizacionEmpresaFormView({ id }) {
                                     <th className="text-center p-3">Precio Manual c/IVA</th>
                                     <th className="text-center p-3">Precio Manual s/IVA</th>
                                     <th className="text-center p-3">Total</th>
-                                    <th className="text-right p-3">Piso</th>
-                                    <th className="text-right p-3">Bodega</th>
+                                    <th className="text-center p-3">Almacen</th>
+                                    <th className="text-center p-3">Stock</th>
                                     <th className="text-center p-3">Descripcion personalizada</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {!lineas.length ? (
                                     <tr>
-                                        <td colSpan={12} className="p-6 text-center text-muted">Aun no agregas partidas</td>
+                                        <td colSpan={13} className="p-6 text-center text-muted">Aun no agregas partidas</td>
                                     </tr>
                                 ) : lineas.map((line, index) => (
                                     <tr
@@ -806,20 +1082,31 @@ export default function CotizacionEmpresaFormView({ id }) {
                                         <td className="p-3 text-right align-top">
                                             <input
                                                 type="number"
-                                                min="0"
-                                                value={line.cantidad_factura}
+                                                value={line.cantidad_factura_input ?? String(line.cantidad_factura || "")}
                                                 onChange={(event) => updateLinea(line.uid, "cantidad_factura", event.target.value)}
-                                                className="w-18 rounded-lg border border-border px-2 py-1 text-right"
+                                                className="w-18 rounded-lg border border-border px-2 py-1 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                                 onMouseDown={e => e.stopPropagation()}
                                             />
                                             {line.is_invalid_qty ? (
-                                                <p className="text-[11px] text-red-600 mt-1">Debe ser multiplo o divisor</p>
+                                                <p className="text-[10px] text-red-600 mt-1">Debe ser mayor a 0</p>
+                                            ) : null}
+                                            {line.exceeds_stock_almacen ? (
+                                                <p className="text-[10px] text-red-600 mt-1">Supera el stock del almacén</p>
                                             ) : null}
                                         </td>
                                         <td className="p-3 text-center align-top">
-                                            <span className="text-sm text-primary capitalize">{line.unidad || "pieza"}</span>
+                                            <select
+                                                className="w-28 rounded-lg border border-border px-3 py-1 text-sm"
+                                                value={line.unidad || "pieza"}
+                                                onChange={(event) => updateLinea(line.uid, "unidad", event.target.value)}
+                                                onMouseDown={e => e.stopPropagation()}
+                                            >
+                                                {TIPO_PRESENTACION_OPTIONS.map((tipo) => (
+                                                    <option key={`${line.uid}-unidad-${tipo.value}`} value={tipo.value}>{tipo.label}</option>
+                                                ))}
+                                            </select>
                                         </td>
-                                        <td className="p-3 text-center align-top">{line.piezas_por_presentacion || 1}</td>
+                                        <td className="p-3 py-4 text-center align-top">{line.piezas_por_presentacion || 1}</td>
                                         <td className="p-3 align-top">
                                             <select
                                                 className="w-35 rounded-lg border border-border px-2 py-1 text-sm"
@@ -856,9 +1143,23 @@ export default function CotizacionEmpresaFormView({ id }) {
                                                 onMouseDown={e => e.stopPropagation()}
                                             />
                                         </td>
-                                        <td className="p-3 text-right font-semibold text-primary align-top">{fmtMoney(line.total_bruto)}</td>
-                                        <td className="p-3 text-center align-top">{line.piso}</td>
-                                        <td className="p-3 text-center align-top">{line.bodega}</td>
+                                        <td className="p-3 py-4 text-right font-semibold text-primary align-top">{fmtMoney(line.total_bruto)}</td>
+                                        <td className="p-3 text-center align-top">
+                                            <select
+                                                className="w-44 rounded-lg border border-border px-2 py-1 text-sm"
+                                                value={line.id_almacen || ""}
+                                                onChange={(event) => updateLinea(line.uid, "id_almacen", event.target.value)}
+                                                onMouseDown={e => e.stopPropagation()}
+                                            >
+                                                <option value="">Selecciona</option>
+                                                {(line.almacenes_stock || []).map((almacen) => (
+                                                    <option key={`${line.uid}-almacen-${almacen.id_almacen}`} value={almacen.id_almacen}>
+                                                        {almacen.nombre}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </td>
+                                        <td className="p-3 py-4 text-center align-top">{Number(line.stock_almacen || 0)}</td>
                                         <td className="p-3 min-w-[260px] align-top">
                                             <input
                                                 onChange={(event) => updateLinea(line.uid, "descripcion_personalizada", event.target.value)}
@@ -907,7 +1208,7 @@ export default function CotizacionEmpresaFormView({ id }) {
                                 >
                                     <p className="font-medium text-primary">{item.name}</p>
                                     <p className="text-xs text-muted">
-                                        Cant. sistema: {item.quantity} | Piso: {item.piso} | Bodega: {item.bodega} | Precio c/IVA: {fmtMoney(item.manual_price)}
+                                        Cant. sistema: {item.quantity} | Stock total: {Number(item.stock_total || 0)} | Precio c/IVA: {fmtMoney(item.manual_price)}
                                     </p>
                                 </button>
                             ))}

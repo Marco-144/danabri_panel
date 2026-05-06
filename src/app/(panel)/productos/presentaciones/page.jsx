@@ -86,6 +86,8 @@ export default function ProductosPresentacionesPage() {
         const toOption = (item) => ({
             value: item.id,
             label: item.label || item.nombre || item.clave || String(item.id),
+            nombre: item.nombre,
+            clave: item.clave,
             parent_id: item.parent_id ?? null,
         });
 
@@ -326,13 +328,13 @@ export default function ProductosPresentacionesPage() {
                 <table className="w-full min-w-[1400px] text-sm">
                     <thead className="bg-background text-primary">
                         <tr>
-                            <th className="text-left p-2">ID</th>
-                            <th className="text-left p-3">CodigoBarras</th>
                             <th className="text-left p-3">Nombre</th>
+                            <th className="text-left p-3">CodigoBarras</th>
                             <th className="text-left p-2">Tipo</th>
                             <th className="text-left p-2">Piezas</th>
                             <th className="text-left p-3">Costo</th>
                             <th className="text-left p-3">Precio</th>
+                            <th className="text-left p-2">Almacen</th>
                             <th className="text-left p-2">Ubicacion</th>
                             <th className="text-left p-3">Linea</th>
                             <th className="text-left p-3">Familia</th>
@@ -349,13 +351,13 @@ export default function ProductosPresentacionesPage() {
 
                         {filtered.map((p) => (
                             <tr key={p.id_presentacion} className="border-t border-border hover:bg-background/50">
-                                <td className="p-2">{p.id_presentacion}</td>
-                                <td className="p-3">{p.codigo_barras}</td>
                                 <td className="p-3">{p.nombre}</td>
+                                <td className="p-3">{p.codigo_barras}</td>
                                 <td className="p-2">{p.tipo_presentacion || "-"}</td>
                                 <td className="p-2">{p.piezas_por_presentacion}</td>
                                 <td className="p-3">${Number(p.costo || 0).toFixed(2)}</td>
                                 <td className="p-3">${Number(p.precio_nivel_1 || 0).toFixed(2)}</td>
+                                <td className="p-2">{p.almacen_nombre || "-"}</td>
                                 <td className="p-2">{p.codigo_ubicacion || "-"}</td>
                                 <td className="p-3">{p.linea_nombre || "-"}</td>
                                 <td className="p-3">{p.familia_nombre || "-"}</td>

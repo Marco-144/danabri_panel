@@ -1,4 +1,4 @@
-import { getInventario, createInventario, updateInventario, deleteInventario } from "@/modules/almacenes.service";
+import { getInventario } from "@/modules/almacenes.service";
 
 export async function GET(req) {
     try {
@@ -15,29 +15,13 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-    try {
-        const body = await req.json();
-        return Response.json(await createInventario(body));
-    } catch (error) {
-        return Response.json({ error: error.message }, { status: 400 });
-    }
+    return Response.json({ error: "El inventario es solo de consulta" }, { status: 405 });
 }
 
 export async function PUT(req) {
-    try {
-        const body = await req.json();
-        const { id, ...payload } = body;
-        return Response.json(await updateInventario(id, payload));
-    } catch (error) {
-        return Response.json({ error: error.message }, { status: 400 });
-    }
+    return Response.json({ error: "El inventario es solo de consulta" }, { status: 405 });
 }
 
 export async function DELETE(req) {
-    try {
-        const body = await req.json();
-        return Response.json(await deleteInventario(body.id));
-    } catch (error) {
-        return Response.json({ error: error.message }, { status: 400 });
-    }
+    return Response.json({ error: "El inventario es solo de consulta" }, { status: 405 });
 }

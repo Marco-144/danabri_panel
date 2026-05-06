@@ -43,6 +43,7 @@ export async function getFacturasProveedor({
         SELECT
             fp.id_factura_proveedor AS id_factura,
             fp.folio_factura,
+            fp.id_orden_compra,
             fp.fecha_factura,
             fp.fecha_vencimiento,
             fp.subtotal,
@@ -116,6 +117,7 @@ export async function getFacturaById(id) {
 
     const [filaFactura] = await db.execute(
         `SELECT
+            fp.id_factura_proveedor AS id_factura,
             fp.*,
             p.nombre AS proveedor_nombre,
             p.rfc AS proveedor_rfc,

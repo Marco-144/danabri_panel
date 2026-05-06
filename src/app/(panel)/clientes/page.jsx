@@ -3,7 +3,7 @@
 // Soporta modos por query: listado, alta, edicion y detalle.
 
 
-import { Search, ChevronLeft, ChevronRight, Loader, AlertTriangle, Plus, Pencil, Eye, Trash } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Loader, AlertTriangle, Plus, Pencil, Eye, Trash, Users } from "lucide-react";
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -262,6 +262,7 @@ function ClientesListView() {
       <PageTitle
         title="Clientes"
         subtitle="Lista de clientes"
+        icon={<Users size={20} />}
         actions={(
           <Link href="/clientes?mode=add">
             <Button variant="primary" className="rounded-xl shadow-sm gap-2"><Plus size={16} />Agregar Cliente</Button>
@@ -301,6 +302,7 @@ function ClientesListView() {
       <div className="bg-white rounded-2xl shadow-card border border-border overflow-hidden">
         <ClienteTableInline
           data={paginatedData}
+          tiposCliente={catalogos.tipos_cliente}
           onDelete={openDeleteModal}
           onToggleStatus={openToggleStatusModal}
           pendingId={pendingId}
@@ -493,7 +495,11 @@ function ClientesFiltersInline({ value, giros = [], tiposCliente = [], onApply, 
   );
 }
 
-function ClienteTableInline({ data, onDelete, onToggleStatus, pendingId }) {
+function ClienteTableInline({ data, tiposCliente = [], onDelete, onToggleStatus, pendingId }) {
+  const tipoClienteMap = new Map(
+    tiposCliente.map((tipo) => [String(tipo.nombre || "").trim().toLowerCase(), tipo])
+  );
+
   return (
     <table className="w-full text-sm">
       <thead className="bg-background text-primary">
@@ -501,8 +507,9 @@ function ClienteTableInline({ data, onDelete, onToggleStatus, pendingId }) {
           <th className="text-left p-3">Nombre</th>
           <th className="text-left p-3">Giro</th>
           <th className="text-left p-3">Telefono</th>
-          <th className="text-left p-3">Tipo</th>
+          <th className="text-left p-3">Tipo / Precio</th>
           <th className="text-left p-3">Dias de Ruta</th>
+          <th className="text-left p-3">Credito / Factura</th>
           <th className="text-left p-3">Estado</th>
           <th className="text-center p-3">Acciones</th>
         </tr>
@@ -511,7 +518,7 @@ function ClienteTableInline({ data, onDelete, onToggleStatus, pendingId }) {
       <tbody>
         {data.length === 0 && (
           <tr>
-            <td colSpan={6} className="p-6 text-center text-muted">No hay clientes para mostrar.</td>
+            <td colSpan={8} className="p-6 text-center text-muted">No hay clientes para mostrar.</td>
           </tr>
         )}
 
@@ -520,8 +527,26 @@ function ClienteTableInline({ data, onDelete, onToggleStatus, pendingId }) {
             <td className="p-3">{c.nombre}</td>
             <td className="p-3">{c.giro}</td>
             <td className="p-3">{c.telefono}</td>
-            <td className="p-3">{c.tipo_cliente}</td>
+            <td className="p-3">
+              <div className="font-medium text-primary">{c.tipo_cliente}</div>
+              <div className="text-[11px] text-muted">
+                {(() => {
+                  const meta = tipoClienteMap.get(String(c.tipo_cliente || "").trim().toLowerCase());
+                  return meta ? `Precio ${meta.nivel_precio}` : "Sin nivel configurado";
+                })()}
+              </div>
+            </td>
             <td className="p-3">{c.dias_rutas || "-"}</td>
+            <td className="p-3 text-xs">
+              <div className="flex flex-col gap-1">
+                <span className={`inline-flex w-fit rounded-full px-2.5 py-1 font-medium ${c.credito_habilitado ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>
+                  {c.credito_habilitado ? "Con credito" : "Sin credito"}
+                </span>
+                <span className={`inline-flex w-fit rounded-full px-2.5 py-1 font-medium ${c.facturar_sin_pagar ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-800"}`}>
+                  {c.facturar_sin_pagar ? "Factura sin pago" : "Factura con pago"}
+                </span>
+              </div>
+            </td>
             <td className="p-3">
               {(() => {
                 const isActivo = c.activo === 1 || c.activo === "1";

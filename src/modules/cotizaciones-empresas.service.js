@@ -1,6 +1,7 @@
 import db from "@/lib/db";
 
 const IVA_RATE = 0.16;
+const TIPOS_PRESENTACION = new Set(["pieza", "caja", "paquete"]);
 
 function to6(value) {
     return Math.round(Number(value || 0) * 1000000) / 1000000;
@@ -40,10 +41,19 @@ function toMoney(value, fieldName) {
 
 function normalizeUnidad(value) {
     const unidad = String(value || "").trim().toLowerCase();
-    if (["pieza", "caja", "paquete"].includes(unidad)) {
+    if (TIPOS_PRESENTACION.has(unidad)) {
         return unidad;
     }
     return "pieza";
+}
+
+function normalizeTipoPresentacion(value) {
+    const tipo = String(value || "pieza").trim().toLowerCase();
+    if (TIPOS_PRESENTACION.has(tipo)) {
+        return tipo;
+    }
+
+    throw new Error("tipo_presentacion invalido");
 }
 
 function parseDescripcionMeta(rawValue) {
@@ -84,14 +94,16 @@ function normalizeDetalleRow(row) {
 
     return {
         id_detalle: row.id_detalleCotizacionEmpresa,
+        id_presentacion: row.id_presentacion ? Number(row.id_presentacion) : null,
+        id_almacen: row.id_almacen ? Number(row.id_almacen) : null,
+        presentacion_nombre: row.presentacion_nombre || "",
+        almacen_nombre: row.almacen_nombre || "",
         descripcion: String(row.descripcion || "").trim(),
         descripcion_personalizada: parsed.descripcion_personalizada,
         requerimiento: parsed.requerimiento,
         cantidad: cantidadFactura,
         cantidad_factura: cantidadFactura,
         cantidad_sistema: cantidadSistema,
-        piso: Number(row.piso || 0),
-        bodega: Number(row.bodega || 0),
         precio_sin_iva: to6(row.precio_sin_iva || 0),
         precio_con_iva: to6(row.precio_con_iva || 0),
         unidad: normalizeUnidad(row.unidad),
@@ -102,17 +114,15 @@ function normalizeDetalleRow(row) {
 function normalizeHeaderRow(row) {
     return {
         id_cotizacion_empresa: row.id_cotizacion_empresa,
+        folio: row.folio,
         id_empresa: row.id_empresa,
         empresa_nombre: row.empresa_nombre,
         empresa_nombre_fiscal: row.empresa_nombre_fiscal,
         empresa_rfc: row.empresa_rfc,
-        empresa_direccion: row.empresa_direccion,
-        empresa_colonia: row.empresa_colonia,
-        empresa_ciudad: row.empresa_ciudad,
-        empresa_cp: row.empresa_cp,
-        empresa_estado: row.empresa_estado,
+        empresa_pago_habitual: row.empresa_pago_habitual,
         id_usuario: row.id_usuario,
         usuario_nombre: row.usuario_nombre,
+        tipo_presentacion: normalizeTipoPresentacion(row.tipo_presentacion),
         fecha_emision: row.fecha_emision,
         vigencia_dias: Number(row.vigencia_dias || 0),
         total: Number(row.total || 0),
@@ -127,6 +137,8 @@ function normalizeDetalles(detalles) {
 
     return detalles.map((detalle, index) => {
         const line = index + 1;
+        const id_presentacion = toPositiveInt(detalle.id_presentacion, `id_presentacion de la partida ${line}`);
+        const id_almacen = toPositiveInt(detalle.id_almacen, `id_almacen de la partida ${line}`);
         const cantidad_factura = toPositiveInt(
             detalle.cantidad_factura !== undefined ? detalle.cantidad_factura : detalle.cantidad,
             `cantidad factura de la partida ${line}`
@@ -136,11 +148,6 @@ function normalizeDetalles(detalles) {
         const cantidad_sistema = Number.isInteger(cantidad_sistema_raw) && cantidad_sistema_raw > 0
             ? cantidad_sistema_raw
             : cantidad_factura;
-
-        const isDivisible = (cantidad_factura % cantidad_sistema === 0) || (cantidad_sistema % cantidad_factura === 0);
-        if (!isDivisible) {
-            throw new Error(`La cantidad factura de la partida ${line} debe ser multiplo o divisor de la cantidad de sistema`);
-        }
 
         const precio_sin_iva = to6(toMoney(detalle.precio_sin_iva, `precio sin IVA de la partida ${line}`));
         const precio_con_iva = to6(toMoney(
@@ -156,11 +163,11 @@ function normalizeDetalles(detalles) {
 
         return {
             descripcion,
+            id_presentacion,
+            id_almacen,
             cantidad: cantidad_factura,
             cantidad_factura,
             cantidad_sistema,
-            piso: Number(detalle.piso || 0),
-            bodega: Number(detalle.bodega || 0),
             precio_sin_iva,
             precio_con_iva,
             unidad,
@@ -177,13 +184,10 @@ export async function getCotizacionesEmpresas({ search = "", id_empresa, fecha_d
             e.nombre AS empresa_nombre,
             e.nombre_fiscal AS empresa_nombre_fiscal,
             e.rfc AS empresa_rfc,
-            e.direccion AS empresa_direccion,
-            e.colonia AS empresa_colonia,
-            e.ciudad AS empresa_ciudad,
-            e.cp AS empresa_cp,
-            e.estado AS empresa_estado,
+            e.pago_habitual AS empresa_pago_habitual,
             ce.id_usuario,
             u.nombre AS usuario_nombre,
+            ce.tipo_presentacion,
             ce.fecha_emision,
             ce.vigencia_dias,
             ce.total,
@@ -234,13 +238,10 @@ export async function getCotizacionEmpresaById(id) {
             e.nombre AS empresa_nombre,
             e.nombre_fiscal AS empresa_nombre_fiscal,
             e.rfc AS empresa_rfc,
-            e.direccion AS empresa_direccion,
-            e.colonia AS empresa_colonia,
-            e.ciudad AS empresa_ciudad,
-            e.cp AS empresa_cp,
-            e.estado AS empresa_estado,
+            e.pago_habitual AS empresa_pago_habitual,
             ce.id_usuario,
             u.nombre AS usuario_nombre,
+            ce.tipo_presentacion,
             ce.fecha_emision,
             ce.vigencia_dias,
             ce.total,
@@ -262,6 +263,8 @@ export async function getCotizacionEmpresaById(id) {
         `
         SELECT
             id_detalleCotizacionEmpresa,
+            id_presentacion,
+            id_almacen,
             descripcion,
             cantidad,
             precio_sin_iva,
@@ -269,8 +272,8 @@ export async function getCotizacionEmpresaById(id) {
             unidad,
             total,
             0 AS cantidad_sistema,
-            0 AS piso,
-            0 AS bodega
+            (SELECT pp.nombre FROM producto_presentaciones pp WHERE pp.id_presentacion = detalle_cotizacion_empresa.id_presentacion LIMIT 1) AS presentacion_nombre,
+            (SELECT a.nombre FROM almacenes a WHERE a.id_almacen = detalle_cotizacion_empresa.id_almacen LIMIT 1) AS almacen_nombre
         FROM detalle_cotizacion_empresa
         WHERE id_cotizacion_empresa = ?
         ORDER BY id_detalleCotizacionEmpresa ASC
@@ -287,6 +290,7 @@ export async function getCotizacionEmpresaById(id) {
 export async function createCotizacionEmpresa(data) {
     const id_empresa = toPositiveInt(data.id_empresa, "id_empresa");
     const id_usuario = toPositiveInt(data.id_usuario, "id_usuario");
+    const tipo_presentacion = normalizeTipoPresentacion(data.tipo_presentacion);
     const fecha_emision = toDate(data.fecha_emision, "fecha_emision");
     const vigencia_dias = toPositiveInt(data.vigencia_dias, "vigencia_dias");
     const detalles = normalizeDetalles(data.detalles);
@@ -299,10 +303,10 @@ export async function createCotizacionEmpresa(data) {
 
         const [insertResult] = await conn.execute(
             `
-            INSERT INTO cotizacion_empresa (id_empresa, id_usuario, fecha_emision, vigencia_dias, total)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO cotizacion_empresa (id_empresa, id_usuario, tipo_presentacion, fecha_emision, vigencia_dias, total)
+            VALUES (?, ?, ?, ?, ?, ?)
             `,
-            [id_empresa, id_usuario, fecha_emision, vigencia_dias, total]
+            [id_empresa, id_usuario, tipo_presentacion, fecha_emision, vigencia_dias, total]
         );
 
         const id_cotizacion_empresa = insertResult.insertId;
@@ -311,11 +315,13 @@ export async function createCotizacionEmpresa(data) {
             await conn.execute(
                 `
                 INSERT INTO detalle_cotizacion_empresa
-                (id_cotizacion_empresa, descripcion, cantidad, precio_sin_iva, precio_con_iva, unidad, total)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id_cotizacion_empresa, id_presentacion, id_almacen, descripcion, cantidad, precio_sin_iva, precio_con_iva, unidad, total)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
                 [
                     id_cotizacion_empresa,
+                    item.id_presentacion,
+                    item.id_almacen,
                     item.descripcion,
                     item.cantidad,
                     item.precio_sin_iva,
@@ -341,6 +347,7 @@ export async function updateCotizacionEmpresa(id, data) {
     const id_cotizacion_empresa = toPositiveInt(id, "id_cotizacion_empresa");
     const id_empresa = toPositiveInt(data.id_empresa, "id_empresa");
     const id_usuario = toPositiveInt(data.id_usuario, "id_usuario");
+    const tipo_presentacion = normalizeTipoPresentacion(data.tipo_presentacion);
     const fecha_emision = toDate(data.fecha_emision ?? data.emision, "fecha_emision");
     const vigencia_dias = toPositiveInt(data.vigencia_dias, "vigencia_dias");
     const detalles = normalizeDetalles(data.detalles);
@@ -354,10 +361,10 @@ export async function updateCotizacionEmpresa(id, data) {
         const [updateResult] = await conn.execute(
             `
             UPDATE cotizacion_empresa
-            SET id_empresa = ?, id_usuario = ?, fecha_emision = ?, vigencia_dias = ?, total = ?
+            SET id_empresa = ?, id_usuario = ?, tipo_presentacion = ?, fecha_emision = ?, vigencia_dias = ?, total = ?
             WHERE id_cotizacion_empresa = ?
             `,
-            [id_empresa, id_usuario, fecha_emision, vigencia_dias, total, id_cotizacion_empresa]
+            [id_empresa, id_usuario, tipo_presentacion, fecha_emision, vigencia_dias, total, id_cotizacion_empresa]
         );
 
         if (!updateResult.affectedRows) {
@@ -373,11 +380,13 @@ export async function updateCotizacionEmpresa(id, data) {
             await conn.execute(
                 `
                 INSERT INTO detalle_cotizacion_empresa
-                (id_cotizacion_empresa, descripcion, cantidad, precio_sin_iva, precio_con_iva, unidad, total)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id_cotizacion_empresa, id_presentacion, id_almacen, descripcion, cantidad, precio_sin_iva, precio_con_iva, unidad, total)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
                 [
                     id_cotizacion_empresa,
+                    item.id_presentacion,
+                    item.id_almacen,
                     item.descripcion,
                     item.cantidad,
                     item.precio_sin_iva,
@@ -419,7 +428,7 @@ export async function searchEmpresasCatalog({ search = "", limit = 15 } = {}) {
 
     const [rows] = await db.execute(
         `
-        SELECT id_empresa, nombre, rfc, nombre_fiscal, direccion, colonia, ciudad, cp, estado
+        SELECT id_empresa, nombre, rfc, nombre_fiscal, direccion, colonia, ciudad, cp, estado, pago_habitual
         FROM empresas
         WHERE (? = '%%' OR nombre LIKE ? OR nombre_fiscal LIKE ? OR rfc LIKE ?)
         ORDER BY nombre ASC
@@ -431,7 +440,7 @@ export async function searchEmpresasCatalog({ search = "", limit = 15 } = {}) {
     return rows;
 }
 
-export async function searchProductosCatalog({ search = "", limit = 20 } = {}) {
+export async function searchProductosCatalog({ search = "", limit = 20, unidad = "" } = {}) {
     const top = Math.min(Math.max(Number(limit) || 20, 1), 50);
     const q = `%${String(search || "").trim()}%`;
 
@@ -451,13 +460,9 @@ export async function searchProductosCatalog({ search = "", limit = 20 } = {}) {
             pp.precio_nivel_2,
             pp.precio_nivel_3,
             pp.precio_nivel_4,
-            pp.precio_nivel_5,
-            COALESCE(SUM(CASE WHEN LOWER(a.nombre) LIKE '%piso%' THEN inv.stock ELSE 0 END), 0) AS piso,
-            COALESCE(SUM(CASE WHEN LOWER(a.nombre) LIKE '%bodega%' THEN inv.stock ELSE 0 END), 0) AS bodega
+                        pp.precio_nivel_5
         FROM producto_presentaciones pp
         INNER JOIN productos p ON p.id_producto = pp.id_producto
-        LEFT JOIN inventario inv ON inv.id_presentacion = pp.id_presentacion
-        LEFT JOIN almacenes a ON a.id_almacen = inv.id_almacen
         WHERE pp.activo = 1
           AND p.activo = 1
           AND (
@@ -487,6 +492,40 @@ export async function searchProductosCatalog({ search = "", limit = 20 } = {}) {
         [q, q, q, q]
     );
 
+    const presentacionIds = rows.map((row) => Number(row.id_presentacion)).filter((id) => Number.isInteger(id) && id > 0);
+    const almacenesStockByPresentacion = new Map();
+
+    if (presentacionIds.length) {
+        const placeholders = presentacionIds.map(() => "?").join(", ");
+        const [stockRows] = await db.execute(
+            `
+            SELECT
+                inv.id_presentacion,
+                inv.id_almacen,
+                a.nombre AS almacen_nombre,
+                COALESCE(inv.stock, 0) AS stock
+            FROM inventario inv
+            INNER JOIN almacenes a ON a.id_almacen = inv.id_almacen
+            WHERE inv.id_presentacion IN (${placeholders})
+            ORDER BY a.nombre ASC
+            `,
+            presentacionIds
+        );
+
+        for (const stockRow of stockRows) {
+            const key = Number(stockRow.id_presentacion);
+            if (!almacenesStockByPresentacion.has(key)) {
+                almacenesStockByPresentacion.set(key, []);
+            }
+
+            almacenesStockByPresentacion.get(key).push({
+                id_almacen: Number(stockRow.id_almacen),
+                nombre: String(stockRow.almacen_nombre || "").trim(),
+                stock: Number(stockRow.stock || 0),
+            });
+        }
+    }
+
     return rows.map((row) => {
         const unidadRaw = String(row.tipo_presentacion || "").toLowerCase();
         const unidad = ["pieza", "caja", "paquete"].includes(unidadRaw) ? unidadRaw : "pieza";
@@ -512,6 +551,9 @@ export async function searchProductosCatalog({ search = "", limit = 20 } = {}) {
             })
             .filter(Boolean);
 
+        const almacenes_stock = almacenesStockByPresentacion.get(Number(row.id_presentacion)) || [];
+        const stock_total = almacenes_stock.reduce((acc, item) => acc + Number(item.stock || 0), 0);
+
         return {
             id_presentacion: row.id_presentacion,
             id_producto: row.id_producto,
@@ -529,8 +571,8 @@ export async function searchProductosCatalog({ search = "", limit = 20 } = {}) {
             manual_price_net: manualPriceNet,
             price_levels: priceLevels,
             custom_description: `${row.producto_nombre} ${row.presentacion_nombre}`.trim(),
-            piso: Number(row.piso || 0),
-            bodega: Number(row.bodega || 0),
+            almacenes_stock,
+            stock_total,
         };
     });
 }
