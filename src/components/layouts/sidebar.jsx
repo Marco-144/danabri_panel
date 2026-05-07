@@ -7,7 +7,7 @@ import { useEffect, useState, useTransition } from "react";
 import {
   Box, Boxes, ChevronRight, LayoutDashboard, LogOut, Map, Package, Settings, ShoppingBag, ArrowRightLeft, Warehouse, FileInput, Building2,
   Truck, UserRound, Users, ChartNoAxesGantt, ChartBarStacked, ScanBarcode, BookMarked, ShelvingUnit, Siren, ReceiptText, CircleDollarSign,
-  FileText, Combine } from "lucide-react";
+  FileText, Combine, ShoppingBasket, ExternalLink } from "lucide-react";
 import { clearAuthToken, getAuthToken, getAuthUserFromToken, isTokenExpired } from "@/services/auth";
 /* import path from "node:path"; */
 
@@ -376,7 +376,7 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={() => setProveedoresOpen((v) => !v)}
-          className={`${linkBaseClass} justigy-betwwen ${proveedoresSelected
+          className={`${linkBaseClass} justify-between ${proveedoresSelected
             ? "bg-accent text-white font-medium"
             : "text-gray-300 hover:bg-slidehover hover:text-white"
             }`}
@@ -439,6 +439,20 @@ export default function Sidebar() {
             }`}>
           <ShoppingBag size={16} />
           <span>Ventas de POS</span>
+        </Link>
+        
+        <Link href="http://32.193.208.224/punto-venta/" target="_blank"
+          className={`${linkBaseClass} justify-between  ${pathname === "/punto-venta" || pathname.startsWith("/punto-venta/")
+            ? "bg-accent text-white font-medium"
+            : "text-gray-300 hover:bg-slidehover hover:text-white"
+            }`}>
+          <span className="flex items-center gap-2">
+            <ShoppingBasket size={16} />
+            <span>Punto de Venta</span>
+          </span>
+          <span className={`transition-transform duration-400 ${proveedoresExpanded ? "rotate-90" : "rotate-0"}`}>
+            <ExternalLink size={16} />
+          </span>
         </Link>
 
         <Link
