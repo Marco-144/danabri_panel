@@ -15,11 +15,15 @@ export async function getEmpresas(params = {}) {
     const search = String(params.search || "").trim();
     const cp = String(params.cp || "").trim();
     const hasRfc = params.has_rfc || "all";
+    const activo = params.activo || "all";
 
     if (search) url.searchParams.set("search", search);
     if (cp) url.searchParams.set("cp", cp);
     if (["all", "0", "1"].includes(String(hasRfc))) {
         url.searchParams.set("has_rfc", String(hasRfc));
+    }
+    if (["all", "0", "1"].includes(String(activo))) {
+        url.searchParams.set("activo", String(activo));
     }
 
     return parseOrThrow(await fetch(url.toString()));

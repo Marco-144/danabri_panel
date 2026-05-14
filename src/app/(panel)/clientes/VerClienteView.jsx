@@ -10,7 +10,6 @@ import { getClienteById } from "@/services/clientsService";
 import { getCatalogosClientes } from "@/services/configuracionService";
 import Button from "@/components/ui/Button";
 import PageTitle from "@/components/ui/PageTitle";
-import FieldCard from "@/components/ui/FieldCard";
 
 export default function VerClienteView({ id: propId }) {
     const params = useParams();

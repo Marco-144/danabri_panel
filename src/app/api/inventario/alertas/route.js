@@ -4,9 +4,11 @@ export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
         const id_almacen = searchParams.get("id_almacen") || null;
+        const id_marca = searchParams.get("id_marca") || null;
+        const id_proveedor = searchParams.get("id_proveedor") || null;
         const search = searchParams.get("search") || "";
 
-        const data = await getAlertasStock({ id_almacen, search });
+        const data = await getAlertasStock({ id_almacen, id_marca, id_proveedor, search });
         return Response.json(data);
     } catch (error) {
         return Response.json({ error: error.message }, { status: 400 });

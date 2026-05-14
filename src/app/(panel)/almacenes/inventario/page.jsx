@@ -8,7 +8,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import { FilterPopover } from "@/components/ui/FilterPopover";
 import { getAlmacenes, getInventario, ajusteInventario, traspasoInventario } from "@/services/almacenesService";
-import { getPresentacionesByProducto } from "@/services/productosService";
+import { getPresentacionesByProducto, getPresentacionCatalogoItems, updatePresentacion } from "@/services/productosService";
 
 export default function AlmacenesInventarioPage() {
     const [loading, setLoading] = useState(true);
@@ -25,6 +25,7 @@ export default function AlmacenesInventarioPage() {
 
     const [ajusteModal, setAjusteModal] = useState({ open: false, item: null });
     const [traspasoModal, setTraspasoModal] = useState({ open: false, item: null });
+    const [ubicacionModal, setUbicacionModal] = useState({ open: false, item: null });
 
     const loadBase = useCallback(async () => {
         try {
@@ -60,6 +61,12 @@ export default function AlmacenesInventarioPage() {
     useEffect(() => {
         if (!loading) loadInventario();
     }, [idAlmacen, soloBajoMinimo, loadInventario, loading]);
+
+    useEffect(() => {
+        const handler = (e) => setUbicacionModal({ open: true, item: e.detail });
+        window.addEventListener('openUbicacionModal', handler);
+        return () => window.removeEventListener('openUbicacionModal', handler);
+    }, []);
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -248,6 +255,17 @@ export default function AlmacenesInventarioPage() {
                     onSubmit={onSubmitTraspaso}
                 />
             )}
+
+            {ubicacionModal.open && (
+                <UbicacionEditModal
+                    item={ubicacionModal.item}
+                    onCancel={() => setUbicacionModal({ open: false, item: null })}
+                    onSaved={async () => {
+                        setUbicacionModal({ open: false, item: null });
+                        await loadInventario();
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -380,6 +398,14 @@ function TraspasoModal({ item, almacenes, onCancel, onSubmit, saving }) {
                 <h3 className="text-lg font-semibold text-primary">Traspaso de inventario</h3>
                 <p className="text-sm text-muted">{item?.producto_nombre} / {item?.presentacion_nombre}</p>
 
+                <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => {
+                        // Abrir modal de edición de ubicacion para esta presentacion
+                        // `item` contiene id_presentacion e id_almacen
+                        window.dispatchEvent(new CustomEvent('openUbicacionModal', { detail: item }));
+                    }}>Editar ubicación</Button>
+                </div>
+
                 <Select
                     label="Almacen destino"
                     value={idDestino}
@@ -396,6 +422,115 @@ function TraspasoModal({ item, almacenes, onCancel, onSubmit, saving }) {
                     <Button type="submit" variant="accent" disabled={submitDisabled}>{saving ? "Guardando..." : "Traspasar"}</Button>
                 </div>
             </form>
+        </div>
+    );
+}
+
+function UbicacionEditModal({ item, onCancel, onSaved }) {
+    const [almacenes, setAlmacenes] = useState([]);
+    const [racks, setRacks] = useState([]);
+    const [niveles, setNiveles] = useState([]);
+    const [secciones, setSecciones] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+
+    const [idAlmacen, setIdAlmacen] = useState(item?.id_almacen ?? "");
+    const [idRack, setIdRack] = useState(item?.id_rack ?? "");
+    const [idNivel, setIdNivel] = useState(item?.id_nivel ?? "");
+    const [idSeccion, setIdSeccion] = useState(item?.id_seccion ?? "");
+
+    useEffect(() => {
+        let active = true;
+        const load = async () => {
+            try {
+                setLoading(true);
+                const [a, r, n, s] = await Promise.all([
+                    getAlmacenes(),
+                    getPresentacionCatalogoItems('rack'),
+                    getPresentacionCatalogoItems('nivel'),
+                    getPresentacionCatalogoItems('seccion'),
+                ]);
+
+                if (!active) return;
+                setAlmacenes(Array.isArray(a) ? a : []);
+                setRacks(Array.isArray(r) ? r : []);
+                setNiveles(Array.isArray(n) ? n : []);
+                setSecciones(Array.isArray(s) ? s : []);
+                setError("");
+            } catch (err) {
+                if (active) setError(err.message || "Error al cargar opciones de ubicacion");
+            } finally {
+                if (active) setLoading(false);
+            }
+        };
+        load();
+        return () => { active = false; };
+    }, [item?.id_presentacion]);
+
+    const onSave = async () => {
+        try {
+            setSaving(true);
+            await updatePresentacion(item.id_presentacion, {
+                id_almacen: idAlmacen ? Number(idAlmacen) : null,
+                id_rack: idRack ? Number(idRack) : null,
+                id_nivel: idNivel ? Number(idNivel) : null,
+                id_seccion: idSeccion ? Number(idSeccion) : null,
+            });
+            setError("");
+            await onSaved?.();
+        } catch (err) {
+            setError(err.message || "No se pudo actualizar ubicacion");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 bg-primary/40 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-border shadow-card w-full max-w-lg p-5 space-y-4">
+                <h3 className="text-lg font-semibold text-primary">Editar ubicación</h3>
+                <p className="text-sm text-muted">{item?.producto_nombre} / {item?.presentacion_nombre}</p>
+
+                {error ? <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div> : null}
+
+                <Select
+                    label="Almacén"
+                    value={String(idAlmacen || "")}
+                    onChange={(e) => setIdAlmacen(e.target.value)}
+                    options={(almacenes || []).map((a) => ({ value: a.id_almacen, label: a.nombre }))}
+                    placeholder="Seleccionar almacen"
+                />
+
+                <Select
+                    label="Rack"
+                    value={String(idRack || "")}
+                    onChange={(e) => setIdRack(e.target.value)}
+                    options={(racks || []).map((r) => ({ value: r.id, label: r.label || r.nombre || r.clave }))}
+                    placeholder="Seleccionar rack"
+                />
+
+                <Select
+                    label="Nivel"
+                    value={String(idNivel || "")}
+                    onChange={(e) => setIdNivel(e.target.value)}
+                    options={(niveles || []).map((n) => ({ value: n.id, label: n.label || n.nombre || n.clave }))}
+                    placeholder="Seleccionar nivel"
+                />
+
+                <Select
+                    label="Sección"
+                    value={String(idSeccion || "")}
+                    onChange={(e) => setIdSeccion(e.target.value)}
+                    options={(secciones || []).map((s) => ({ value: s.id, label: s.label || s.nombre || s.clave }))}
+                    placeholder="Seleccionar seccion"
+                />
+
+                <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={onCancel}>Cancelar</Button>
+                    <Button variant="accent" onClick={onSave} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
+                </div>
+            </div>
         </div>
     );
 }

@@ -5,11 +5,55 @@ import {
     getCotizacionesClientes,
     updateCotizacionCliente,
 } from "@/modules/cotizaciones-clientes.service";
+import { renderToBuffer } from "@react-pdf/renderer";
+import { createElement } from "react";
+import CotizacionClientePdf from "@/components/pdf/CotizacionClientePdf";
+import fs from "fs";
+import path from "path";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
         const id = searchParams.get("id");
+        const wantsPdf = searchParams.get("pdf") === "1";
+        const ivaParam = searchParams.get("iva");
+        const includeIva = ivaParam === null ? true : ivaParam !== "0";
+
+        if (wantsPdf) {
+            if (!id) return Response.json({ error: "id requerido" }, { status: 400 });
+            const cot = await getCotizacionClienteById(id);
+
+            // try to find the logo in public using the actual project file names
+            const logoCandidates = [
+                path.join(process.cwd(), "public", "DanabriLogoRecortado.png"),
+            ];
+            const logoFile = logoCandidates.find((candidate) => fs.existsSync(candidate)) || null;
+            const logoPath = logoFile ? `data:image/${path.extname(logoFile).slice(1)};base64,${fs.readFileSync(logoFile).toString("base64")}` : null;
+
+            const papeleria = {
+                nombre: process.env.PAPELERIA_NOMBRE || "",
+                direccion: process.env.PAPELERIA_DIRECCION || "",
+                telefono: process.env.PAPELERIA_TELEFONO || "",
+                rfc: process.env.PAPELERIA_RFC || "",
+                nota: process.env.PAPELERIA_NOTA || "",
+            };
+
+            const buffer = await renderToBuffer(
+                createElement(CotizacionClientePdf, { cotizacion: cot, includeIva, papeleria, logoPath })
+            );
+
+            const filename = `cotizacion-${cot.folio || id}.pdf`;
+            return new Response(buffer, {
+                headers: {
+                    "Content-Type": "application/pdf",
+                    "Content-Disposition": `inline; filename="${filename}"`,
+                    "Cache-Control": "no-store",
+                },
+            });
+        }
 
         if (id) {
             return Response.json(await getCotizacionClienteById(id));

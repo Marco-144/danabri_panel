@@ -212,27 +212,32 @@ function buildPriceLevels(item) {
     if (levelsSource.length) {
         return levelsSource
             .map((entry) => {
-                const withTax = Number(entry?.price_with_tax ?? 0);
-                if (!Number.isFinite(withTax) || withTax <= 0) return null;
+                const basePrice = Number(entry?.price_with_tax ?? 0);
+
+                if (!Number.isFinite(basePrice) || basePrice <= 0) {
+                    return null;
+                }
 
                 return {
                     level: Number(entry.level || 1),
                     label: `Precio ${Number(entry.level || 1)}`,
-                    priceWithTax: to6(withTax),
-                    priceWithoutTax: to6(Number(entry?.price_without_tax ?? (withTax / (1 + IVA_RATE)))),
+                    priceWithoutTax: to6(basePrice),
+                    priceWithTax: to6(basePrice * (1 + IVA_RATE)),
                 };
             })
             .filter(Boolean);
     }
+    const basePrice = Number(item?.manual_price || 0);
 
-    const withTax = Number(item?.manual_price || 0);
-    if (!Number.isFinite(withTax) || withTax <= 0) return [];
+    if (!Number.isFinite(basePrice) || basePrice <= 0) {
+        return [];
+    }
 
     return [{
         level: 1,
         label: "Precio 1",
-        priceWithTax: to6(withTax),
-        priceWithoutTax: to6(Number(item?.manual_price_net ?? (withTax / (1 + IVA_RATE)))),
+        priceWithoutTax: to6(basePrice),
+        priceWithTax: to6(basePrice * (1 + IVA_RATE)),
     }];
 }
 
@@ -451,7 +456,7 @@ export default function CotizacionEmpresaFormView({ id }) {
             priceWithoutTax: to6(item.manual_price_net || 0),
         };
         const precioSinIva = to6(nivelInicial.priceWithoutTax || 0);
-        const precioConIva = to6(nivelInicial.priceWithTax || (precioSinIva * (1 + IVA_RATE)));
+        const precioConIva = to6(precioSinIva * (1 + IVA_RATE));
         const cantidadFactura = 1;
         const cantidadSistema = Number(item.quantity || 1) || 1;
         const almacenesStock = Array.isArray(item.almacenes_stock) ? item.almacenes_stock : [];
@@ -538,7 +543,7 @@ export default function CotizacionEmpresaFormView({ id }) {
                 if (!selectedLevel) return line;
 
                 const precioSinIva = to6(selectedLevel.priceWithoutTax || 0);
-                const precioConIva = to6(selectedLevel.priceWithTax || 0);
+                const precioConIva = to6(selectedLevel.priceWithTax || (precioSinIva * 1.16));
                 const cantidadFactura = Number(line.cantidad_factura || 0);
 
                 return {
@@ -671,11 +676,12 @@ export default function CotizacionEmpresaFormView({ id }) {
     }
 
     function buildPrintableHtml({ includeIva }) {
-        const totalValue = includeIva ? totalConIva : totalSinIva;
+        const totalValue = includeIva ? totalSinIva * 1.16 : totalSinIva;
 
         const rowsHtml = lineas.map((line, index) => {
-            const unitPrice = includeIva ? line.precio_manual_con_iva : line.precio_manual_sin_iva;
-            const amount = includeIva ? line.total_bruto : line.total_neto;
+            const basePriceWithoutIva = line.precio_manual_sin_iva || 0;
+            const unitPrice = includeIva ? basePriceWithoutIva * 1.16 : basePriceWithoutIva;
+            const amount = includeIva ? (basePriceWithoutIva * 1.16 * Number(line.cantidad_factura || 0)) : (basePriceWithoutIva * Number(line.cantidad_factura || 0));
             const almacenSeleccionado = (line.almacenes_stock || []).find(
                 (almacen) => Number(almacen.id_almacen) === Number(line.id_almacen)
             );
@@ -1033,9 +1039,9 @@ export default function CotizacionEmpresaFormView({ id }) {
                                     <th className="text-center p-3">Tipo</th>
                                     <th className="text-center p-3">Piezas</th>
                                     <th className="text-center p-3">Nivel Precio</th>
-                                    <th className="text-center p-3">Precio Manual c/IVA</th>
-                                    <th className="text-center p-3">Precio Manual s/IVA</th>
-                                    <th className="text-center p-3">Total</th>
+                                    <th className="text-center p-3">Precio Unitario s/IVA</th>
+                                    <th className="text-center p-3">Precio Unitario c/IVA</th>
+                                    <th className="text-center p-3">Total s/IVA</th>
                                     <th className="text-center p-3">Almacen</th>
                                     <th className="text-center p-3">Stock</th>
                                     <th className="text-center p-3">Descripcion personalizada</th>
@@ -1082,7 +1088,7 @@ export default function CotizacionEmpresaFormView({ id }) {
                                         <td className="p-3 text-right align-top">
                                             <input
                                                 type="number"
-                                                value={line.cantidad_factura_input ?? String(line.cantidad_factura || "")}
+                                                value={line.cantidad_factura_input != null ? line.cantidad_factura_input : String(line.cantidad_factura || "")}
                                                 onChange={(event) => updateLinea(line.uid, "cantidad_factura", event.target.value)}
                                                 className="w-18 rounded-lg border border-border px-2 py-1 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                                 onMouseDown={e => e.stopPropagation()}
@@ -1116,21 +1122,10 @@ export default function CotizacionEmpresaFormView({ id }) {
                                             >
                                                 {(line.niveles_precio || []).map((nivel) => (
                                                     <option key={`${line.uid}-${nivel.level}`} value={nivel.level}>
-                                                        {nivel.label} - {fmtMoney(nivel.priceWithTax)}
+                                                        {nivel.label} - {fmtMoney(nivel.priceWithoutTax)}
                                                     </option>
                                                 ))}
                                             </select>
-                                        </td>
-                                        <td className="p-3 text-right align-top">
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                min="0"
-                                                value={line.precio_manual_con_iva}
-                                                onChange={(event) => updateLinea(line.uid, "precio_manual_con_iva", event.target.value)}
-                                                className="w-28 rounded-lg border border-border px-2 py-1 text-right"
-                                                onMouseDown={e => e.stopPropagation()}
-                                            />
                                         </td>
                                         <td className="p-3 text-right align-top">
                                             <input
@@ -1143,7 +1138,18 @@ export default function CotizacionEmpresaFormView({ id }) {
                                                 onMouseDown={e => e.stopPropagation()}
                                             />
                                         </td>
-                                        <td className="p-3 py-4 text-right font-semibold text-primary align-top">{fmtMoney(line.total_bruto)}</td>
+                                        <td className="p-3 text-right align-top">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={line.precio_manual_con_iva}
+                                                onChange={(event) => updateLinea(line.uid, "precio_manual_con_iva", event.target.value)}
+                                                className="w-28 rounded-lg border border-border px-2 py-1 text-right"
+                                                onMouseDown={e => e.stopPropagation()}
+                                            />
+                                        </td>
+                                        <td className="p-3 py-4 text-right font-semibold text-primary align-top">{fmtMoney(line.total_neto)}</td>
                                         <td className="p-3 text-center align-top">
                                             <select
                                                 className="w-44 rounded-lg border border-border px-2 py-1 text-sm"

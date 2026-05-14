@@ -12,6 +12,19 @@ function toNullableString(value) {
     return text ? text : null;
 }
 
+function toNullableInt(value) {
+    if (value === undefined || value === null || value === "") {
+        return null;
+    }
+
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return null;
+    }
+
+    return parsed;
+}
+
 const VALID_STATUSES = ["pendiente", "recibida", "cancelada", "parcial"];
 
 async function buildNextFolio(connection) {
@@ -19,6 +32,63 @@ async function buildNextFolio(connection) {
         "SELECT COALESCE(MAX(id_orden_compra), 0) + 1 AS nextFolio FROM ordenes_compra"
     );
     return `OC-${String(nextFolio).padStart(5, "0")}`;
+}
+
+function normalizeOrdenDetalle(item) {
+    const cantidad = Number(item?.cantidad);
+    const costoUnitario = Number(item?.costo_unitario);
+    const idPresentacion = toNullableInt(item?.id_presentacion);
+    const origenLinea = String(item?.origen_linea || (idPresentacion ? "catalogo" : "manual")).toLowerCase();
+    const descripcionManual = toNullableString(item?.descripcion_manual || item?.nombre || item?.producto_nombre);
+    const codigoManual = toNullableString(item?.codigo_manual || item?.codigo_barras);
+
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+        throw new Error("Cantidad invalida en partida");
+    }
+
+    if (Number.isNaN(costoUnitario) || costoUnitario < 0) {
+        throw new Error("Costo invalido en partida");
+    }
+
+    if (idPresentacion) {
+        return {
+            id_presentacion: idPresentacion,
+            origen_linea: "catalogo",
+            descripcion_manual: null,
+            codigo_manual: codigoManual,
+            cantidad,
+            costo_unitario: costoUnitario,
+        };
+    }
+
+    if (!descripcionManual) {
+        throw new Error("La descripcion del producto manual es requerida");
+    }
+
+    return {
+        id_presentacion: null,
+        origen_linea: origenLinea === "manual" ? "manual" : "manual",
+        descripcion_manual: descripcionManual,
+        codigo_manual: codigoManual,
+        cantidad,
+        costo_unitario: costoUnitario,
+    };
+}
+
+function mapDetalleOrdenRow(row) {
+    return {
+        id_detalle: row.id_detalle,
+        id_presentacion: row.id_presentacion,
+        origen_linea: row.origen_linea || (row.id_presentacion ? "catalogo" : "manual"),
+        descripcion_manual: row.descripcion_manual || null,
+        codigo_manual: row.codigo_manual || null,
+        presentacion_nombre: row.presentacion_nombre || row.descripcion_manual || "Producto manual",
+        producto_nombre: row.producto_nombre || row.descripcion_manual || "Producto manual",
+        codigo_barras: row.codigo_barras || row.codigo_manual || null,
+        cantidad: Number(row.cantidad || 0),
+        costo_unitario: Number(row.costo_unitario || 0),
+        subtotal: Number(row.subtotal || 0),
+    };
 }
 
 export async function getOrdenesCompra({ search = "", status = "" } = {}) {
@@ -99,6 +169,9 @@ export async function getOrdenCompraById(id) {
         `SELECT
             od.id_detalle_ordencompra,
             od.id_presentacion,
+            NULL AS origen_linea,
+            NULL AS descripcion_manual,
+            NULL AS codigo_manual,
             od.cantidad,
             od.costo_unitario,
             od.subtotal,
@@ -106,14 +179,14 @@ export async function getOrdenCompraById(id) {
             pp.codigo_barras,
             p.nombre AS producto_nombre
         FROM ordenes_compra_detalle od
-        INNER JOIN producto_presentaciones pp ON pp.id_presentacion = od.id_presentacion
-        INNER JOIN productos p ON p.id_producto = pp.id_producto
+        LEFT JOIN producto_presentaciones pp ON pp.id_presentacion = od.id_presentacion
+        LEFT JOIN productos p ON p.id_producto = pp.id_producto
         WHERE od.id_orden_compra = ?
         ORDER BY od.id_detalle_ordencompra ASC`,
         [idOrden]
     );
 
-    return { ...orden, detalles };
+    return { ...orden, detalles: detalles.map(mapDetalleOrdenRow) };
 }
 
 export async function getKpisOrdenesCompra() {
@@ -171,16 +244,23 @@ export async function createOrdenCompra(data) {
         const idOrden = insertResult.insertId;
 
         for (const item of partidas) {
-            const cantidad = Number(item.cantidad);
-            const costo_unitario = Number(item.costo_unitario);
-            const itemSubtotal = Math.round(cantidad * costo_unitario * 100) / 100;
-            const id_presentacion = toPositiveId(item.id_presentacion, "id_presentacion");
+            const detalle = normalizeOrdenDetalle(item);
+            const itemSubtotal = Math.round(detalle.cantidad * detalle.costo_unitario * 100) / 100;
 
             await conn.execute(
                 `INSERT INTO ordenes_compra_detalle
-                    (id_orden_compra, id_presentacion, cantidad, costo_unitario, subtotal)
-                 VALUES (?, ?, ?, ?, ?)`,
-                [idOrden, id_presentacion, cantidad, costo_unitario, itemSubtotal]
+                    (id_orden_compra, id_presentacion, origen_linea, descripcion_manual, codigo_manual, cantidad, costo_unitario, subtotal)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    idOrden,
+                    detalle.id_presentacion,
+                    detalle.origen_linea,
+                    detalle.descripcion_manual,
+                    detalle.codigo_manual,
+                    detalle.cantidad,
+                    detalle.costo_unitario,
+                    itemSubtotal,
+                ]
             );
         }
 
@@ -255,16 +335,23 @@ export async function updateOrdenCompra(id, data) {
             await conn.execute("DELETE FROM ordenes_compra_detalle WHERE id_orden_compra = ?", [idOrden]);
 
             for (const item of partidas) {
-                const cantidad = Number(item.cantidad);
-                const costo_unitario = Number(item.costo_unitario);
-                const itemSubtotal = Math.round(cantidad * costo_unitario * 100) / 100;
-                const id_presentacion = toPositiveId(item.id_presentacion, "id_presentacion");
+                const detalle = normalizeOrdenDetalle(item);
+                const itemSubtotal = Math.round(detalle.cantidad * detalle.costo_unitario * 100) / 100;
 
                 await conn.execute(
                     `INSERT INTO ordenes_compra_detalle
-                        (id_orden_compra, id_presentacion, cantidad, costo_unitario, subtotal)
-                     VALUES (?, ?, ?, ?, ?)`,
-                    [idOrden, id_presentacion, cantidad, costo_unitario, itemSubtotal]
+                        (id_orden_compra, id_presentacion, origen_linea, descripcion_manual, codigo_manual, cantidad, costo_unitario, subtotal)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        idOrden,
+                        detalle.id_presentacion,
+                        detalle.origen_linea,
+                        detalle.descripcion_manual,
+                        detalle.codigo_manual,
+                        detalle.cantidad,
+                        detalle.costo_unitario,
+                        itemSubtotal,
+                    ]
                 );
             }
 

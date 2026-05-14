@@ -74,6 +74,9 @@ export default function OrdenForm({ id }) {
                     setPartidas(
                         (orden.detalles || []).map((d) => ({
                             id_presentacion: d.id_presentacion,
+                            origen_linea: d.origen_linea || (d.id_presentacion ? "catalogo" : "manual"),
+                            descripcion_manual: d.descripcion_manual || d.presentacion_nombre || "",
+                            codigo_manual: d.codigo_manual || d.codigo_barras || "",
                             nombre: d.presentacion_nombre,
                             producto_nombre: d.producto_nombre,
                             codigo_barras: d.codigo_barras,
@@ -154,10 +157,13 @@ export default function OrdenForm({ id }) {
             return [
                 ...prev,
                 {
+                    origen_linea: "catalogo",
                     id_presentacion: pres.id_presentacion,
                     nombre: pres.nombre,
                     producto_nombre: pres.producto_nombre || `Producto #${pres.id_producto}`,
                     codigo_barras: pres.codigo_barras,
+                    descripcion_manual: pres.nombre,
+                    codigo_manual: pres.codigo_barras || "",
                     cantidad: 1,
                     costo_unitario: Number(pres.costo ?? pres.ultimo_costo ?? 0),
                 },
@@ -181,6 +187,27 @@ export default function OrdenForm({ id }) {
 
     function removePartida(idx) {
         setPartidas((prev) => prev.filter((_, i) => i !== idx));
+    }
+
+    function addManualPartida() {
+        setPartidas((prev) => ([
+            ...prev,
+            {
+                origen_linea: "manual",
+                id_presentacion: null,
+                nombre: "",
+                producto_nombre: "Producto manual",
+                codigo_barras: "",
+                descripcion_manual: "",
+                codigo_manual: "",
+                cantidad: 1,
+                costo_unitario: 0,
+            },
+        ]));
+    }
+
+    function updateManualField(idx, field, value) {
+        setPartidas((prev) => prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)));
     }
 
     async function handleSave() {
@@ -207,7 +234,10 @@ export default function OrdenForm({ id }) {
                 fecha,
                 notas,
                 detalles: partidas.map((p) => ({
-                    id_presentacion: Number(p.id_presentacion),
+                    id_presentacion: p.id_presentacion ? Number(p.id_presentacion) : null,
+                    origen_linea: p.origen_linea || (p.id_presentacion ? "catalogo" : "manual"),
+                    descripcion_manual: p.descripcion_manual || p.nombre || p.producto_nombre,
+                    codigo_manual: p.codigo_manual || p.codigo_barras || "",
                     cantidad: Number(p.cantidad),
                     costo_unitario: Number(p.costo_unitario),
                 })),
@@ -326,9 +356,14 @@ export default function OrdenForm({ id }) {
                                 <h2 className="text-base font-semibold text-primary">Productos</h2>
                                 <p className="text-xs text-muted">{partidas.length} producto{partidas.length !== 1 ? "s" : ""} agregado{partidas.length !== 1 ? "s" : ""}</p>
                             </div>
-                            <Button variant="primary" className="gap-2 rounded-xl" onClick={() => setSelectorOpen(true)}>
-                                <Plus size={15} /> Agregar Producto
-                            </Button>
+                            <div className="flex flex-wrap gap-2 justify-end">
+                                <Button variant="outline" className="gap-2 rounded-xl" onClick={addManualPartida}>
+                                    <Plus size={15} /> Producto manual
+                                </Button>
+                                <Button variant="primary" className="gap-2 rounded-xl" onClick={() => setSelectorOpen(true)}>
+                                    <Plus size={15} /> Agregar Producto
+                                </Button>
+                            </div>
                         </div>
 
                         {partidas.length === 0 ? (
@@ -353,10 +388,29 @@ export default function OrdenForm({ id }) {
                                         {partidas.map((p, idx) => (
                                             <tr key={`${p.id_presentacion}-${idx}`} className="border-t border-border hover:bg-background/40">
                                                 <td className="p-2 pl-3">
-                                                    <p className="font-medium text-primary">{p.nombre}</p>
-                                                    <p className="text-xs text-muted">{p.producto_nombre || "-"}</p>
+                                                    {p.origen_linea === "manual" ? (
+                                                        <div className="space-y-2 min-w-[260px]">
+                                                            <Input
+                                                                label="Descripción"
+                                                                value={p.descripcion_manual || ""}
+                                                                onChange={(e) => updateManualField(idx, "descripcion_manual", e.target.value)}
+                                                                inputClassName="py-2"
+                                                            />
+                                                            <Input
+                                                                label="Código (opcional)"
+                                                                value={p.codigo_manual || ""}
+                                                                onChange={(e) => updateManualField(idx, "codigo_manual", e.target.value)}
+                                                                inputClassName="py-2"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <p className="font-medium text-primary">{p.nombre}</p>
+                                                            <p className="text-xs text-muted">{p.producto_nombre || "-"}</p>
+                                                        </>
+                                                    )}
                                                 </td>
-                                                <td className="p-2 font-mono text-xs text-muted">{p.codigo_barras || "-"}</td>
+                                                <td className="p-2 font-mono text-xs text-muted">{p.origen_linea === "manual" ? (p.codigo_manual || "-") : (p.codigo_barras || "-")}</td>
                                                 <td className="p-2">
                                                     <input
                                                         type="number"

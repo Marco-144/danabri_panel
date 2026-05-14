@@ -16,9 +16,68 @@ function toNullableString(value) {
     return text ? text : null;
 }
 
+function toNullableInt(value) {
+    if (value === undefined || value === null || value === "") return null;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) return null;
+    return parsed;
+}
+
 function fmtDate(d) {
     if (!d) return null;
     return new Date(d).toISOString().slice(0, 10);
+}
+
+function normalizeFacturaDetalle(det) {
+    const idPresentacion = toNullableInt(det.id_presentacion);
+    const descripcionManual = toNullableString(det.descripcion_manual || det.nombre || det.producto_nombre);
+    const codigoManual = toNullableString(det.codigo_manual || det.codigo_barras);
+    const cantidadRecibida = Number(det.cantidad_recibida ?? det.cantidad ?? 1);
+    const costoSinIva = Number(det.costo_unitario_sin_iva ?? det.costo_unitario ?? 0);
+
+    if (!Number.isInteger(cantidadRecibida) || cantidadRecibida <= 0) {
+        throw new Error("Cantidad invalida en factura");
+    }
+
+    if (Number.isNaN(costoSinIva) || costoSinIva < 0) {
+        throw new Error("Costo invalido en factura");
+    }
+
+    if (!idPresentacion && !descripcionManual) {
+        throw new Error("La descripcion del producto manual es requerida");
+    }
+
+    const subtotalSinIva = cantidadRecibida * costoSinIva;
+
+    return {
+        id_presentacion: idPresentacion,
+        origen_linea: String(det.origen_linea || (idPresentacion ? "catalogo" : "manual")).toLowerCase(),
+        descripcion_manual: descripcionManual,
+        codigo_manual: codigoManual,
+        cantidad_recibida: cantidadRecibida,
+        costo_unitario_sin_iva: costoSinIva,
+        costo_unitario_con_iva: Math.round((costoSinIva * 1.16) * 100) / 100,
+        subtotal_sin_iva: subtotalSinIva,
+        subtotal_con_iva: Math.round((subtotalSinIva * 1.16) * 100) / 100,
+    };
+}
+
+function mapFacturaDetalleRow(row) {
+    return {
+        id_detalle: row.id_detalle,
+        id_presentacion: row.id_presentacion,
+        origen_linea: row.origen_linea || (row.id_presentacion ? "catalogo" : "manual"),
+        descripcion_manual: row.descripcion_manual || null,
+        codigo_manual: row.codigo_manual || null,
+        cantidad_recibida: Number(row.cantidad_recibida || 0),
+        costo_unitario_sin_iva: Number(row.costo_unitario_sin_iva || 0),
+        costo_unitario_con_iva: Number(row.costo_unitario_con_iva || 0),
+        subtotal_sin_iva: Number(row.subtotal_sin_iva || 0),
+        subtotal_con_iva: Number(row.subtotal_con_iva || 0),
+        presentacion_nombre: row.presentacion_nombre || row.descripcion_manual || "Producto manual",
+        producto_nombre: row.producto_nombre || row.descripcion_manual || "Producto manual",
+        codigo_barras: row.codigo_barras || row.codigo_manual || null,
+    };
 }
 
 async function buildNextFolioFactura(connection) {
@@ -139,6 +198,9 @@ export async function getFacturaById(id) {
         `SELECT
             fpd.id_detalle_facturas_proveedor AS id_detalle,
             fpd.id_presentacion,
+            fpd.origen_linea,
+            fpd.descripcion_manual,
+            fpd.codigo_manual,
             fpd.cantidad_recibida,
             fpd.costo_unitario_sin_iva,
             fpd.costo_unitario_con_iva,
@@ -148,8 +210,8 @@ export async function getFacturaById(id) {
             pp.codigo_barras,
             p.nombre AS producto_nombre
         FROM facturas_proveedor_detalle fpd
-        INNER JOIN producto_presentaciones pp ON pp.id_presentacion = fpd.id_presentacion
-        INNER JOIN productos p ON p.id_producto = pp.id_producto
+        LEFT JOIN producto_presentaciones pp ON pp.id_presentacion = fpd.id_presentacion
+        LEFT JOIN productos p ON p.id_producto = pp.id_producto
         WHERE fpd.id_factura_proveedor = ?
         ORDER BY fpd.id_detalle_facturas_proveedor ASC`,
         [idFactura]
@@ -172,7 +234,7 @@ export async function getFacturaById(id) {
 
     return {
         ...factura,
-        detalles,
+        detalles: detalles.map(mapFacturaDetalleRow),
         pagos,
         total_pagado: pagos.reduce((sum, p) => sum + Number(p.monto || 0), 0),
     };
@@ -258,22 +320,13 @@ export async function createFacturaFromOrden(data) {
 
         // Copiar o usar detalles editados de la orden a la factura
         for (const det of detalleBase) {
-            const cantidadRecibida = Number(det.cantidad_recibida ?? det.cantidad ?? 1);
-            const costoSinIva = Number(det.costo_unitario_sin_iva ?? det.costo_unitario ?? 0);
-            const idPresentacion = toPositiveId(det.id_presentacion, "id_presentacion");
-            const costoConIva = costoSinIva * 1.16;
-            const subTotal = cantidadRecibida * costoSinIva;
+            const detalle = normalizeFacturaDetalle(det);
 
             detallesFactura.push({
-                id_presentacion: idPresentacion,
-                cantidad_recibida: cantidadRecibida,
-                costo_unitario_sin_iva: costoSinIva,
-                costo_unitario_con_iva: costoConIva,
-                subtotal_sin_iva: subTotal,
-                subtotal_con_iva: subTotal * 1.16,
+                ...detalle,
             });
 
-            subtotal += subTotal;
+            subtotal += detalle.subtotal_sin_iva;
         }
 
         const descuentoNum = Number(descuento) || 0;
@@ -313,9 +366,20 @@ export async function createFacturaFromOrden(data) {
         for (const detalle of detallesFactura) {
             await conn.execute(
                 `INSERT INTO facturas_proveedor_detalle
-                    (id_factura_proveedor, id_presentacion, cantidad_recibida, costo_unitario_sin_iva, costo_unitario_con_iva, subtotal_sin_iva, subtotal_con_iva)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [idFactura, detalle.id_presentacion, detalle.cantidad_recibida, detalle.costo_unitario_sin_iva, detalle.costo_unitario_con_iva, detalle.subtotal_sin_iva, detalle.subtotal_con_iva]
+                    (id_factura_proveedor, id_presentacion, origen_linea, descripcion_manual, codigo_manual, cantidad_recibida, costo_unitario_sin_iva, costo_unitario_con_iva, subtotal_sin_iva, subtotal_con_iva)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    idFactura,
+                    detalle.id_presentacion,
+                    detalle.origen_linea,
+                    detalle.descripcion_manual,
+                    detalle.codigo_manual,
+                    detalle.cantidad_recibida,
+                    detalle.costo_unitario_sin_iva,
+                    detalle.costo_unitario_con_iva,
+                    detalle.subtotal_sin_iva,
+                    detalle.subtotal_con_iva,
+                ]
             );
         }
 
@@ -357,9 +421,9 @@ export async function updateFacturaDetalle(id_factura, detalles_updates) {
 
             if (costoSinIVA < 0) throw new Error("Costo no puede ser negativo");
 
-            const costoConIVA = costoSinIVA * 1.16;
-            const subtotalSinIVA = cantidad * costoSinIVA;
-            const subtotalConIVA = subtotalSinIVA * 1.16;
+            const costoConIVA = Math.round((costoSinIVA * 1.16) * 100) / 100;
+            const subtotalSinIVA = Math.round((cantidad * costoSinIVA) * 100) / 100;
+            const subtotalConIVA = Math.round((subtotalSinIVA * 1.16) * 100) / 100;
 
             await conn.execute(
                 `UPDATE facturas_proveedor_detalle

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronLeft, Loader, Pencil } from "lucide-react";
+import { Loader, FileText, ArrowLeft, FileDown, Pencil } from "lucide-react";
 import Button from "@/components/ui/Button";
 import PageTitle from "@/components/ui/PageTitle";
 import { getCotizacionEmpresaById } from "@/services/cotizacionesEmpresasService";
@@ -139,88 +139,174 @@ export default function CotizacionEmpresaVerView({ id }) {
     }
 
     return (
-        <div className="space-y-5">
-            <PageTitle
-                title={`Cotizacion #${data.id_cotizacion_empresa}`}
-                subtitle="Detalle de cotizacion de empresa"
-                actions={(
-                    <div className="flex gap-2">
-                        <Button variant="danger" onClick={() => openPrintPreview(true)}>
-                            Generar PDF (con IVA)
-                        </Button>
-                        <Button variant="danger" onClick={() => openPrintPreview(false)}>
-                            Generar PDF (sin IVA)
-                        </Button>
-                        <Link href={`/empresas/remisiones?mode=add&id_cotizacion_empresa=${data.id_cotizacion_empresa}`}>
-                            <Button variant="activo">Crear Remision</Button>
-                        </Link>
-                        <Link href={`/empresas/cotizaciones?mode=edit&id=${data.id_cotizacion_empresa}`}>
-                            <Button variant="outline" className="gap-2">
-                                <Pencil size={16} /> Editar
+        <div className="space-y-6">
+            <section className="bg-white border border-border rounded-2xl shadow-card overflow-hidden p-6">
+                <PageTitle
+                    breadcrumb="Cotizaciones / Detalle"
+                    title="Detalle de cotizacion"
+                    Icon={FileText}
+                    actions={(
+                        <div className="flex gap-2">
+                            <Button variant="generate" onClick={() => openPrintPreview(true)}>
+                                <FileDown size={16} />PDF c/IVA
                             </Button>
-                        </Link>
-                        <Link href="/empresas/cotizaciones">
-                            <Button variant="outline" className="gap-2">
-                                <ChevronLeft size={16} /> Volver
+                            <Button variant="generate" onClick={() => openPrintPreview(false)}>
+                                <FileDown size={16} />PDF s/IVA
                             </Button>
-                        </Link>
+                            <Link href={`/empresas/remisiones?mode=add&id_cotizacion_empresa=${data.id_cotizacion_empresa}`}>
+                                <Button variant="primary" className="gap-2">
+                                    <FileText size={16} />Crear Remision
+                                </Button>
+                            </Link>
+                            <Link href={`/clientes/cotizaciones?mode=edit&id=${data.id_cotizacion}`}>
+                                <Button variant="outline" className="gap-2"><Pencil size={16} />Editar</Button>
+                            </Link>
+                            <Link href="/empresas/cotizaciones">
+                                <Button variant="primary" className="gap-2">
+                                    <ArrowLeft size={16} /> Volver
+                                </Button>
+                            </Link>
+                        </div>
+                    )}
+                />
+            </section>
+
+            <div className="flex gap-4 items-start">
+
+                <aside className="w-[252px] shrink-0 sticky top-4 bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <div className="bg-primary px-6 py-6 flex flex-col items-center text-center">
+                        {/* Avatar con inicial del nombre */}
+                        <div className="w-[60px] h-[60px] rounded-full bg-white/20 flex items-center justify-center mb-3 ring-2 ring-white/30">
+                            <span className="text-[18px] font-bold text-white tracking-wide font-oswald">
+                                COT
+                            </span>
+                        </div>
+                        <h2 className="text-white font-semibold text-md leading-snug font-oswald">
+                            COT-E-{String(data.id_cotizacion_empresa).padStart(5, "0")}
+                        </h2>
+                        <p className="text-white/55 text-xs mt-0.5 leading-snug">Propuesta comercial</p>
                     </div>
-                )}
-            />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <FieldCard label="Empresa" value={data.empresa_nombre} />
-                <FieldCard label="Usuario" value={data.usuario_nombre} />
-                <FieldCard label="Tipo" value={String(data.tipo_presentacion || "pieza").toUpperCase()} />
-                <FieldCard label="Fecha emision" value={fmtDate(data.fecha_emision)} />
-                <FieldCard label="Vigencia" value={`${data.vigencia_dias} dias`} />
-                <FieldCard label="Total sin IVA" value={fmtMoney(data.total)} />
-                <FieldCard label="Total con IVA" value={fmtMoney(totalConIva)} />
+                    <div className="p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.10em] text-slate-400 mb-2.5 px-1">
+                            Indicadores clave
+                        </p>
+                        <div className="space-y-0.5">
+                            <div className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors cursor-default">
+                                <span className="text-sm text-slate-500 leading-snug">Total s/IVA</span>
+                                <span className="text-sm font-semibold text-slate-800 shrink-0">
+                                    {fmtMoney(data.total)}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors cursor-default">
+                                <span className="text-sm text-slate-500 leading-snug">Total con IVA</span>
+                                <span className="text-sm font-semibold text-slate-800 shrink-0">
+                                    {fmtMoney(totalConIva)}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors cursor-default">
+                                <span className="text-sm text-slate-500 leading-snug">Vigencia</span>
+                                <span className="text-sm font-semibold text-slate-800 shrink-0">
+                                    {`${data.vigencia_dias} días`}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0 bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+                    <div className="divide-y divide-slate-100">
+                        <section className="px-8 py-6 border-b border-middleborder">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400 mb-5 font-oswald">
+                                Informacion General
+                            </h3>
+
+                            <div className="grid grid-cols-3 gap-4 mb-4">
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Empresa</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{data.empresa_nombre}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Folio</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">COT-E-{String(data.id_cotizacion_empresa).padStart(5, "0")}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Usuario</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{data.usuario_nombre}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Fecha Emisión</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{fmtDate(data.fecha_emision)}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Vigencia</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{data.vigencia_dias} días</p>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section className="px-8 py-6 border-b border-middleborder">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400 mb-5 font-oswald">
+                                Productos
+                            </h3>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[600px] text-sm">
+                                    <thead className="bg-slate-100 text-primary">
+                                        <tr>
+                                            <th className="text-left p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Descripcion</th>
+                                            <th className="text-center p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Cantidad</th>
+                                            <th className="text-center p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Unidad</th>
+                                            <th className="text-right p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Precio sin IVA</th>
+                                            <th className="text-right p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Precio con IVA</th>
+                                            <th className="text-right p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Total sin IVA</th>
+                                            <th className="text-right p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Total con IVA</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(data.detalles || []).length === 0 ? (
+                                            <tr>
+                                                <td colSpan={8} className="p-6 text-center text-muted">Sin partidas</td>
+                                            </tr>
+                                        ) : (data.detalles || []).map((line) => (
+                                            <tr key={line.id_detalle} className="border-t border-border hover:bg-background/40">
+                                                <td className="p-3">{line.descripcion_personalizada || line.descripcion}</td>
+                                                <td className="p-3 text-center">{line.cantidad_factura || line.cantidad}</td>
+                                                <td className="p-3 text-center">{line.unidad}</td>
+                                                <td className="p-3 text-right">{fmtMoney(line.precio_sin_iva)}</td>
+                                                <td className="p-3 text-right">{fmtMoney(line.precio_con_iva)}</td>
+                                                <td className="p-3 text-right font-semibold text-primary">{fmtMoney(line.total)}</td>
+                                                <td className="p-3 text-right font-semibold text-primary">{fmtMoney(
+                                                    (Number(line.cantidad_factura || line.cantidad || 0) *
+                                                        Number(line.precio_con_iva || (Number(line.precio_sin_iva || 0) * (1 + IVA_RATE))))
+                                                )}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <section className="px-8 py-6">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400 mb-5 font-oswald">
+                                Totales
+                            </h3>
+
+                            <div className="grid grid-cols-3 gap-4 mb-4">
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Total s/IVA</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{fmtMoney(data.total)}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Total c/IVA</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{fmtMoney(totalConIva)}</p>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
             </div>
-
-            <div className="bg-white rounded-2xl border border-border shadow-card overflow-x-auto">
-                <table className="w-full min-w-[1180px] text-sm">
-                    <thead className="bg-background text-primary">
-                        <tr>
-                            <th className="text-left p-3">Descripcion</th>
-                            <th className="text-left p-3">Req.</th>
-                            <th className="text-right p-3">Cant. factura</th>
-                            <th className="text-right p-3">Cant. sistema</th>
-                            <th className="text-left p-3">Unidad</th>
-                            <th className="text-right p-3">Precio sin IVA</th>
-                            <th className="text-right p-3">Precio con IVA</th>
-                            <th className="text-right p-3">Total sin IVA</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {(data.detalles || []).length === 0 ? (
-                            <tr>
-                                <td colSpan={8} className="p-6 text-center text-muted">Sin partidas</td>
-                            </tr>
-                        ) : (data.detalles || []).map((line) => (
-                            <tr key={line.id_detalle} className="border-t border-border hover:bg-background/40">
-                                <td className="p-3">{line.descripcion_personalizada || line.descripcion}</td>
-                                <td className="p-3">{line.requerimiento || "-"}</td>
-                                <td className="p-3 text-right">{line.cantidad_factura || line.cantidad}</td>
-                                <td className="p-3 text-right">{line.cantidad_sistema || line.cantidad || "-"}</td>
-                                <td className="p-3">{line.unidad}</td>
-                                <td className="p-3 text-right">{fmtMoney(line.precio_sin_iva)}</td>
-                                <td className="p-3 text-right">{fmtMoney(line.precio_con_iva)}</td>
-                                <td className="p-3 text-right font-semibold text-primary">{fmtMoney(line.total)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-}
-
-function FieldCard({ label, value }) {
-    return (
-        <div className="bg-white rounded-2xl border border-border shadow-card p-4">
-            <p className="text-xs text-muted">{label}</p>
-            <p className="text-sm font-semibold text-primary mt-1">{value || "-"}</p>
         </div>
     );
 }

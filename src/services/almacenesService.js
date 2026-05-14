@@ -142,9 +142,11 @@ export async function deleteMovimiento(id) {
     );
 }
 
-export async function getAlertasStock({ id_almacen = "", search = "" } = {}) {
+export async function getAlertasStock({ id_almacen = "", id_marca = "", id_proveedor = "", search = "" } = {}) {
     const q = new URLSearchParams();
     if (id_almacen) q.set("id_almacen", String(id_almacen));
+    if (id_marca) q.set("id_marca", String(id_marca));
+    if (id_proveedor) q.set("id_proveedor", String(id_proveedor));
     if (search) q.set("search", search);
     return parseOrThrow(await fetch(`${API_INVENTARIO}/alertas?${q.toString()}`));
 }

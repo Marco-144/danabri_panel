@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Eye, Funnel, Loader, Pencil, Plus, Search, Trash2, Combine, FileText, FileDown} from "lucide-react";
+import { Eye, Funnel, Loader, Pencil, Plus, Search, Trash2, Combine, FileText, FileDown } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { FilterPopover, FilterChip } from "@/components/ui/FilterPopover";
@@ -27,8 +27,9 @@ function to6(value) {
 
 function buildPrintableHtml(data, includeIva) {
     const rowsHtml = (data.detalles || []).map((line, index) => {
-        const unitPrice = includeIva ? Number(line.precio_con_iva || line.precio || 0) : Number(line.precio_sin_iva || line.precio || 0);
-        const amount = includeIva ? Number(line.subtotal_con_iva || line.subtotal || 0) : Number(line.subtotal || 0);
+        const basePriceWithoutIva = Number(line.precio_sin_iva || line.precio || 0);
+        const unitPrice = includeIva ? basePriceWithoutIva * 1.16 : basePriceWithoutIva;
+        const amount = includeIva ? (basePriceWithoutIva * 1.16 * Number(line.cantidad || 0)) : (basePriceWithoutIva * Number(line.cantidad || 0));
         return `
             <tr>
                 <td>${index + 1}</td>
@@ -40,7 +41,7 @@ function buildPrintableHtml(data, includeIva) {
         `;
     }).join("");
 
-    const total = includeIva ? Number(data.total_con_iva || data.total || 0) : Number(data.total || 0);
+    const total = includeIva ? (Number(data.total || 0) * 1.16) : Number(data.total || 0);
 
     return `
         <html>
@@ -156,9 +157,9 @@ function CotizacionesClientesListView() {
 
     async function handleGeneratePDF(id, includeIva) {
         try {
-            const data = await getCotizacionClienteById(id);
-            const html = buildPrintableHtml(data, includeIva);
-            openPrintPreview(html);
+            const ivaParam = includeIva ? "1" : "0";
+            const url = `/api/cotizaciones-clientes?id=${encodeURIComponent(id)}&pdf=1&iva=${ivaParam}`;
+            window.open(url, "_blank");
         } catch (e) {
             setError(e.message || "No se pudo generar el PDF");
         }
@@ -230,7 +231,8 @@ function CotizacionesClientesListView() {
                             <th className="text-left p-3">RFC</th>
                             <th className="text-left p-3">Fecha</th>
                             <th className="text-left p-3">Estado</th>
-                            <th className="text-right p-3">Total</th>
+                            <th className="text-right p-3">Total s/IVA</th>
+                            <th className="text-right p-3">Total c/IVA</th>
                             <th className="text-center p-3">Acciones</th>
                         </tr>
                     </thead>
@@ -247,6 +249,7 @@ function CotizacionesClientesListView() {
                                 <td className="p-3">{fmtDate(row.fecha_emision || row.created_at)}</td>
                                 <td className="p-3 capitalize">{row.estado || "pendiente"}</td>
                                 <td className="p-3 text-right font-semibold text-primary">{fmtMoney(row.total)}</td>
+                                <td className="p-3 text-right font-semibold text-primary">{fmtMoney(row.total_con_iva || (Number(row.total || 0) * 1.16))}</td>
                                 <td className="p-3 w-[460px]">
                                     <div className="flex justify-center items-center gap-1">
                                         <Link href={`/clientes/cotizaciones?mode=view&id=${row.id_cotizacion}`}>

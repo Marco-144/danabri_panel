@@ -598,9 +598,8 @@ export default function RemisionEmpresaFormView({ id, idCotizacionEmpresa }) {
                                             <th className="text-right p-3">Stock disponible</th>
                                             <th className="text-right p-3">Cantidad</th>
                                             <th className="text-left p-3">Unidad</th>
-                                            <th className="text-right p-3">Precio c/IVA</th>
-                                            <th className="text-right p-3">Precio s/IVA</th>
-                                            <th className="text-right p-3">Subtotal c/IVA</th>
+                                            <th className="text-right p-3">Precio Unitario s/IVA</th>
+                                            <th className="text-right p-3">Total s/IVA</th>
                                             <th className="text-center p-3">Accion</th>
                                         </tr>
                                     </thead>
@@ -656,8 +655,7 @@ export default function RemisionEmpresaFormView({ id, idCotizacionEmpresa }) {
                                                     </select>
                                                 </td>
                                                 <td className="p-3 text-right">{fmtMoney(line.precio_sin_iva)}</td>
-                                                <td className="p-3 text-right">{fmtMoney(line.precio_con_iva)}</td>
-                                                <td className="p-3 text-right font-semibold text-primary">{fmtMoney(line.subtotal_con_iva)}</td>
+                                                <td className="p-3 text-right font-semibold text-primary">{fmtMoney(line.subtotal_sin_iva || (line.precio_sin_iva * line.cantidad))}</td>
                                                 <td className="p-3 text-center">
                                                     <Button type="button" variant="lightghost" className="p-1.5 h-auto text-red-600" onClick={() => removeLinea(line.uid)}>
                                                         <Trash2 size={16} />
@@ -751,7 +749,7 @@ export default function RemisionEmpresaFormView({ id, idCotizacionEmpresa }) {
                         <p className="text-xs text-center text-muted">Los cambios quedarán listos para revisar antes de facturar.</p>
                     </div>
                 </aside>
-            </form>
-        </div>
+            </form >
+        </div >
     );
 }

@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, Download, Loader, Pencil, Printer } from "lucide-react";
+import { ArrowLeft, Download, Loader, Pencil, Printer, Truck } from "lucide-react";
 import Button from "@/components/ui/Button";
-import FieldCard from "@/components/ui/FieldCard";
 import PageTitle from "@/components/ui/PageTitle";
 import { getDownloadRemisionFacturaUrl, getRemisionEmpresaById } from "@/services/remisionesEmpresasService";
 
@@ -21,6 +20,20 @@ export default function RemisionEmpresaVerView({ id }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+
+    const isTrueFlag = (value) => value === 1 || value === "1" || value === true;
+
+    const getEstadoMeta = (valor) => {
+        const key = String(valor || "").trim().toLowerCase();
+        const map = {
+            pendiente: { label: "Pendiente", classes: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' },
+            parcial: { label: "Parcial", classes: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' },
+            pagada: { label: "Pagada", classes: 'bg-green-50 text-green-700 ring-1 ring-green-200' },
+            cancelada: { label: "Cancelada", classes: 'bg-red-50 text-red-700 ring-1 ring-red-200' },
+        };
+
+        return map[key] ? map[key] : { label: (valor != null ? String(valor).replace(/_/g, ' ') : '-'), classes: 'bg-slate-50 text-slate-600 ring-1 ring-slate-200' };
+    };
 
     useEffect(() => {
         async function loadData() {
@@ -48,7 +61,7 @@ export default function RemisionEmpresaVerView({ id }) {
         const rowsHtml = detalles.map((line, index) => `
             <tr>
                 <td>${index + 1}</td>
-                <td>${String(line.descripcion || "-")}</td>
+                <td>${[line.producto_nombre, line.presentacion_nombre].filter(Boolean).join(" ") || String(line.descripcion || "-")}</td>
                 <td style="text-align:right;">${Number(line.cantidad_factura || 0)}</td>
                 <td>${String(line.unidad || "pieza")}</td>
                 <td style="text-align:right;">$${Number(line.precio_con_iva || 0).toFixed(2)}</td>
@@ -155,70 +168,219 @@ export default function RemisionEmpresaVerView({ id }) {
     if (!data) return null;
 
     return (
-        <div className="space-y-5">
-            <PageTitle
-                title={`Remision ${data.folio_remision}`}
-                subtitle="Detalle completo de remision a empresa"
-                actions={(
-                    <div className="flex gap-2">
-                        <Button variant="outline" className="gap-2" onClick={handlePrint}><Printer size={16} /> Imprimir remision</Button>
-                        <Link href="/empresas/remisiones">
-                            <Button variant="outline" className="gap-2"><ChevronLeft size={16} /> Volver</Button>
-                        </Link>
-                        <Link href={`/empresas/remisiones?mode=edit&id=${data.id_remision_empresa}`}>
-                            <Button variant="outline" className="gap-2"><Pencil size={16} /> Editar</Button>
-                        </Link>
-                        <Link href={`/empresas/abonos?id_remision_empresa=${data.id_remision_empresa}`}>
-                            <Button>Ver Abonos</Button>
-                        </Link>
-                        {data.facturada ? (
-                            <a href={getDownloadRemisionFacturaUrl(data.id_remision_empresa, "pdf")} target="_blank" rel="noreferrer">
-                                <Button variant="outline" className="gap-2"><Download size={16} /> Descargar factura</Button>
-                            </a>
-                        ) : null}
+        <div className="space-y-6">
+            <section className="bg-white border border-border rounded-2xl shadow-card overflow-hidden p-6">
+                <PageTitle
+                    breadcrumb="Remisión / Detalle"
+                    title="Detalle de remisión"
+                    Icon={Truck}
+                    actions={(
+                        <div className="flex gap-2">
+                            <Link href={`/empresas/abonos?id_remision_empresa=${data.id_remision_empresa}`}>
+                                <Button variant="accent">Ver Abonos</Button>
+                            </Link>
+                            {data.facturada ? (
+                                <a href={getDownloadRemisionFacturaUrl(data.id_remision_empresa, "pdf")} target="_blank" rel="noreferrer">
+                                    <Button variant="generate" className="gap-2">
+                                        <Download size={16} />
+                                        Descargar factura
+                                    </Button>
+                                </a>
+                            ) : null}
+                            <Button variant="generate" className="gap-2" onClick={handlePrint}>
+                                <Printer size={16} />
+                                Imprimir remision
+                            </Button>
+                            <Link href={`/empresas/remisiones?mode=edit&id=${data.id_remision_empresa}`}>
+                                <Button variant="outline" className="gap-2">
+                                    <Pencil size={16} />
+                                    Editar
+                                </Button>
+                            </Link>
+                            <Link href="/empresas/remisiones">
+                                <Button variant="primary" className="gap-2">
+                                    <ArrowLeft size={16} /> Volver</Button>
+                            </Link>
+                        </div>
+                    )}
+                />
+            </section>
+
+            {/* Body */}
+            <div className="flex gap-4 items-start">
+
+                {/* Sidebar */}
+                <aside className="w-[252px] shrink-0 sticky top-4 bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <div className="bg-primary px-6 py-6 flex flex-col items-center text-center">
+
+                        {/* Avatar con inicial del nombre */}
+                        <div className="w-[60px] h-[60px] rounded-full bg-white/20 flex items-center justify-center mb-3 ring-2 ring-white/30">
+                            <span className="text-[18px] font-bold text-white tracking-wide font-oswald">
+                                REM
+                            </span>
+                        </div>
+                        <h2 className="text-white font-semibold text-md leading-snug font-oswald">
+                            {data.folio_remision}
+                        </h2>
+                        {(() => {
+                            const meta = getEstadoMeta(data.estado_pago);
+                            return (
+                                <span className={`mt-3 inline-flex items-center rounded-full font-medium px-3 py-1 text-xs ${meta.classes}`}>
+                                    {meta.label}
+                                </span>
+                            );
+                        })()}
                     </div>
-                )}
-            />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <FieldCard label="Empresa" value={data.empresa_nombre_fiscal || data.empresa_nombre} />
-                <FieldCard label="RFC Empresa" value={data.empresa_rfc || "-"} />
-                <FieldCard label="Dirección" value={data.empresa_direccion || "-"} />
-                <FieldCard label="Colonia" value={data.empresa_colonia || "-"} />
-                <FieldCard label="Ciudad" value={data.empresa_ciudad || "-"} />
-                <FieldCard label="Estado" value={data.empresa_estado || "-"} />
-                <FieldCard label="Código Postal" value={data.empresa_cp || "-"} />
-                <FieldCard label="Fecha remision" value={fmtDate(data.fecha_remision)} />
-                <FieldCard label="Referencia cotizacion" value={data.id_cotizacion_empresa ? `Basado en Cotizacion #${data.id_cotizacion_empresa}` : "Sin cotizacion base"} />
-                <FieldCard label="Observaciones" value={data.observaciones || "-"} />
-                <FieldCard label="Total sin IVA" value={fmtMoney(totalSinIva)} />
-                <FieldCard label="Total con IVA" value={fmtMoney(totalConIva)} />
-                <FieldCard label="Estado" value={data.estado_pago} />
-                <FieldCard label="Factura" value={data.facturada ? (data.folio_factura || "Si") : "No"} />
-                <FieldCard label="Fecha factura" value={fmtDate(data.fecha_factura)} />
-            </div>
+                    {/* KPI's */}
+                    <div className="p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.10em] text-slate-400 mb-2.5 px-1">
+                            Indicadores clave
+                        </p>
+                        <div className="space-y-0.5">
+                            <div className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors cursor-default">
+                                <span className="text-sm text-slate-500 leading-snug">Total</span>
+                                <span className="text-sm font-semibold text-slate-800 shrink-0">
+                                    {fmtMoney(totalConIva)}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors cursor-default">
+                                <span className="text-sm text-slate-500 leading-snug">Fecha</span>
+                                <span className="text-sm font-semibold text-slate-800 shrink-0">
+                                    {fmtDate(data.fecha_remision)}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors cursor-default">
+                                <span className="text-sm text-slate-500 leading-snug">Empresa</span>
+                                <span className="text-sm font-semibold text-slate-800 shrink-0">
+                                    {data.empresa_nombre}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
 
-            <div className="bg-white rounded-2xl border border-border shadow-card overflow-x-auto">
-                <table className="w-full min-w-[900px] text-sm">
-                    <thead className="bg-background text-primary">
-                        <tr>
-                            <th className="text-left p-3">Descripcion</th>
-                            <th className="text-right p-3">Cant. factura</th>
-                            <th className="text-left p-3">Unidad</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {(data.detalles || []).length === 0 ? (
-                            <tr><td colSpan={3} className="p-6 text-center text-muted">Sin partidas</td></tr>
-                        ) : (data.detalles || []).map((line) => (
-                            <tr key={line.id_detalle_remision_empresa} className="border-t border-border hover:bg-background/40">
-                                <td className="p-3">{line.descripcion}</td>
-                                <td className="p-3 text-right">{line.cantidad_factura}</td>
-                                <td className="p-3">{line.unidad}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                {/* Content */}
+                <div className="flex-1 min-w-0 bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+                    <div className="divide-y divide-slate-100">
+                        <section className="px-8 py-6 border-b border-middleborder">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400 mb-5 font-oswald">
+                                Información general
+                            </h3>
+
+                            <div className="grid grid-cols-3 gap-4 mb-4">
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Folio</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{data.folio_remision}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Fecha Remisión</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{fmtDate(data.fecha_remision)}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Estado</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">
+                                        {(() => {
+                                            const meta = getEstadoMeta(data.estado_pago);
+                                            return (
+                                                <span className={`mt-3 inline-flex items-center rounded-full font-medium px-3 py-1 text-xs ${meta.classes}`}>
+                                                    {meta.label}
+                                                </span>
+                                            );
+                                        })()}
+                                    </p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Empresa</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{data.empresa_nombre}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Nombre Fiscal</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{data.empresa_nombre_fiscal}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">RFC</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{data.empresa_rfc}</p>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section className="px-8 py-6 border-b border-middleborder">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400 mb-5 font-oswald">
+                                Detalles de Entrega
+                            </h3>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[600px] text-sm">
+                                    <thead className="bg-slate-50 text-slate-500">
+                                        <tr>
+                                            <th className="text-left p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Producto</th>
+                                            <th className="text-left p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Presentacion</th>
+                                            <th className="text-center p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Cantidad</th>
+                                            <th className="text-center p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Unidad</th>
+                                            <th className="text-right p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Precio</th>
+                                            <th className="text-right p-3 font-oswald text-slate-400 uppercase text-xs tracking-[0.05em]">Subtotal</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(data.detalles || []).length === 0 ? (
+                                            <tr><td colSpan={3} className="p-6 text-center text-muted">Sin productos</td></tr>
+                                        ) : (data.detalles || []).map((line) => (
+                                            <tr key={line.id_detalle_remision_empresa} className="border-t border-border hover:bg-background/40">
+                                                <td className="p-3">{[line.producto_nombre].filter(Boolean).join(" ") || line.descripcion || "-"}</td>
+                                                <td className="p-3">{line.presentacion_nombre || "-"}</td>
+                                                <td className="p-3 text-center">{line.cantidad_factura}</td>
+                                                <td className="p-3 text-center">{line.unidad}</td>
+                                                <td className="p-3 text-right">{fmtMoney(line.precio_con_iva)}</td>
+                                                <td className="p-3 text-right">{fmtMoney(line.total_con_iva)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <section className="px-8 py-6 border-b border-middleborder">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400 mb-5 font-oswald">
+                                Totales
+                            </h3>
+                            <div className="grid grid-cols-3 gap-4 mb-4">
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Total s/IVA</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{fmtMoney(totalSinIva)}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Total c/IVA</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{fmtMoney(totalConIva)}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Factura</p>
+                                    <span className={`mt-3 inline-flex items-center rounded-full font-medium px-3 py-1 text-xs ${isTrueFlag(data.facturada)
+                                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                                        : "bg-red-50 text-red-700 ring-1 ring-red-200"
+                                        }`}>
+                                        {isTrueFlag(data.facturada) ? (data.folio_factura || "Facturada") : "No facturada"}
+                                    </span>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Total abonado</p>
+                                    <p className="inline-flex items-center rounded-full font-medium px-4 py-1 text-xs bg-green-50 text-green-700 ring-1 ring-green-200">{fmtMoney(data.total_abonado)}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Saldo pendiente</p>
+                                    <p className="inline-flex items-center rounded-full font-medium px-4 py-1 text-xs bg-red-50 text-red-700 ring-1 ring-red-200">{fmtMoney(data.saldo_pendiente)}</p>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section className="px-8 py-6">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400 mb-5 font-oswald">
+                                Comentarios y observaciones
+                            </h3>
+                            <p className="text-sm text-slate-700">{data.observaciones || "Sin observaciones"}</p>
+                        </section>
+                    </div>
+                </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-border shadow-card p-5 space-y-4">

@@ -58,27 +58,36 @@ function getQtyValidationFlags({ cantidadSistema, cantidadFactura, idAlmacen, st
 
 function buildPriceLevels(item) {
     const levelsSource = Array.isArray(item?.price_levels) ? item.price_levels : [];
+
     if (levelsSource.length) {
         return levelsSource
             .map((entry) => {
-                const withTax = Number(entry?.price_with_tax ?? 0);
-                if (!Number.isFinite(withTax) || withTax <= 0) return null;
+                const basePrice = Number(entry?.price_with_tax ?? 0);
+
+                if (!Number.isFinite(basePrice) || basePrice <= 0) {
+                    return null;
+                }
+
                 return {
                     level: Number(entry.level || 1),
                     label: `Precio ${Number(entry.level || 1)}`,
-                    priceWithTax: to6(withTax),
-                    priceWithoutTax: to6(Number(entry?.price_without_tax ?? (withTax / (1 + IVA_RATE)))),
+                    priceWithoutTax: to6(basePrice),
+                    priceWithTax: to6(basePrice * (1 + IVA_RATE)),
                 };
             })
             .filter(Boolean);
     }
-    const withTax = Number(item?.manual_price || 0);
-    if (!Number.isFinite(withTax) || withTax <= 0) return [];
+    const basePrice = Number(item?.manual_price || 0);
+
+    if (!Number.isFinite(basePrice) || basePrice <= 0) {
+        return [];
+    }
+
     return [{
         level: 1,
         label: "Precio 1",
-        priceWithTax: to6(withTax),
-        priceWithoutTax: to6(Number(item?.manual_price_net ?? (withTax / (1 + IVA_RATE)))),
+        priceWithoutTax: to6(basePrice),
+        priceWithTax: to6(basePrice * (1 + IVA_RATE)),
     }];
 }
 
@@ -108,7 +117,7 @@ function applyClientePriceLevelToLine(line, clienteNivelPrecio) {
     if (!selectedLevel) return line;
 
     const precioSinIva = to6(selectedLevel.priceWithoutTax || 0);
-    const precioConIva = to6(selectedLevel.priceWithTax || 0);
+    const precioConIva = to6(precioSinIva * 1.16);
     const cantidadFactura = Number(line.cantidad_factura || 0);
 
     return {
@@ -190,17 +199,23 @@ export default function CotizacionClienteFormView({ id }) {
                 const data = await getCotizacionClienteById(id);
                 setSelectedCliente({ id_cliente: data.id_cliente, nombre: data.cliente_nombre, rfc: data.cliente_rfc, nivel_precio: data.nivel_precio || 1, tipo_cliente: data.tipo_cliente || "" });
                 setClienteQuery(data.cliente_nombre || "");
-                setFechaEmision(String(data.fecha_emision || "").slice(0, 10));
-                const vigenciaLoaded = String(data.vigencia_dias || "30");
-                setVigenciaDias(vigenciaLoaded);
-                setFechaVencimientoManual(addDays(String(data.fecha_emision || "").slice(0, 10), Number(data.vigencia_dias || 0)));
-                setVigenciaMode("dias");
+                const fechaEmisionLoaded = String(data.fecha_emision || "").slice(0, 10);
+                const fechaVencimientoLoaded = String(data.fecha_vencimiento || "").slice(0, 10);
+                const diasLoaded = Number(data.vigencia_dias || 0);
+                const fechaCalculadaPorDias = fechaEmisionLoaded && diasLoaded > 0 ? addDays(fechaEmisionLoaded, diasLoaded) : "";
+                const vigenciaModeLoaded = data.vigencia_modo === "manual" || (fechaVencimientoLoaded && fechaVencimientoLoaded !== fechaCalculadaPorDias) ? "manual" : "dias";
+
+                setFechaEmision(fechaEmisionLoaded);
+                setVigenciaDias(String(diasLoaded > 0 ? diasLoaded : 1));
+                setFechaVencimientoManual(fechaVencimientoLoaded || fechaCalculadaPorDias);
+                setVigenciaMode(vigenciaModeLoaded);
 
                 setLineas((data.detalles || []).map((line, index) => ({
                     uid: `${Date.now()}-${index}`,
+                    id_presentacion: line.id_presentacion || line.id_presentacion_default || null,
                     id_producto: line.id_producto,
                     producto_nombre: line.producto_nombre || line.descripcion_personalizada || line.descripcion || "",
-                    presentacion_nombre: line.presentacion_nombre || "",
+                    presentacion_nombre: line.presentacion_nombre || line.presentacion_nombre_default || "",
                     descripcion_personalizada: line.descripcion_personalizada || line.descripcion || "",
                     requerimiento: line.requerimiento || "",
                     cantidad_sistema: Number(line.cantidad_sistema || line.cantidad_factura || line.cantidad || 1),
@@ -208,16 +223,18 @@ export default function CotizacionClienteFormView({ id }) {
                     cantidad_factura_input: String(Number(line.cantidad_factura || line.cantidad || 1)),
                     unidad: (line.unidad || "pieza"),
                     piezas_por_presentacion: Number(line.piezas_por_presentacion || line.cantidad_sistema || line.cantidad_factura || line.cantidad || 1),
-                    nivel_precio: 1,
-                    niveles_precio: [{ level: 1, label: "Precio 1", priceWithTax: to6(line.precio_con_iva || 0), priceWithoutTax: to6(line.precio_sin_iva || 0) }],
-                    precio_manual_sin_iva: to6(line.precio_sin_iva || 0),
-                    precio_manual_con_iva: to6(line.precio_con_iva || 0),
-                    total_neto: to6(line.total || 0),
-                    total_bruto: to6(Number(line.cantidad_factura || line.cantidad || 1) * Number(line.precio_con_iva || 0)),
+                    nivel_precio: Number(line.nivel_precio || 1),
+                    niveles_precio: Array.isArray(line.niveles_precio) && line.niveles_precio.length
+                        ? line.niveles_precio
+                        : [{ level: Number(line.nivel_precio || 1), label: `Precio ${Number(line.nivel_precio || 1)}`, priceWithTax: to6(line.precio_manual_con_iva || line.precio_con_iva || 0), priceWithoutTax: to6(line.precio_manual_sin_iva || line.precio_sin_iva || 0) }],
+                    precio_manual_sin_iva: to6(line.precio_manual_sin_iva || line.precio_sin_iva || 0),
+                    precio_manual_con_iva: to6(line.precio_manual_con_iva || line.precio_con_iva || 0),
+                    total_neto: to6(line.subtotal || Number(line.cantidad_factura || line.cantidad || 1) * Number(line.precio_manual_sin_iva || line.precio_sin_iva || 0)),
+                    total_bruto: to6(Number(line.cantidad_factura || line.cantidad || 1) * Number(line.precio_manual_con_iva || line.precio_con_iva || 0)),
                     almacenes_stock: Array.isArray(line.almacenes_stock) ? line.almacenes_stock : [],
-                    id_almacen: line.id_almacen || "",
-                    stock_almacen: Number(line.stock_almacen || 0),
-                    ...getQtyValidationFlags({ cantidadSistema: Number(line.cantidad_sistema || line.cantidad_factura || line.cantidad || 1), cantidadFactura: Number(line.cantidad_factura || line.cantidad || 1), idAlmacen: line.id_almacen || "", stockAlmacen: Number(line.stock_almacen || 0) })
+                    id_almacen: line.id_almacen || ((line.almacenes_stock || []).slice().sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0))[0]?.id_almacen || ""),
+                    stock_almacen: Number(line.stock_almacen || line.stock || ((line.almacenes_stock || []).slice().sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0))[0]?.stock || 0)),
+                    ...getQtyValidationFlags({ cantidadSistema: Number(line.cantidad_sistema || line.cantidad_factura || line.cantidad || 1), cantidadFactura: Number(line.cantidad_factura || line.cantidad || 1), idAlmacen: line.id_almacen || ((line.almacenes_stock || []).slice().sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0))[0]?.id_almacen || ""), stockAlmacen: Number(line.stock_almacen || line.stock || ((line.almacenes_stock || []).slice().sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0))[0]?.stock || 0)) })
                 })));
                 setError("");
             } catch (loadError) {
@@ -315,7 +332,7 @@ export default function CotizacionClienteFormView({ id }) {
                 const selectedLevel = (line.niveles_precio || []).find((lvl) => Number(lvl.level) === nextLevel);
                 if (!selectedLevel) return line;
                 const precioSinIva = to6(selectedLevel.priceWithoutTax || 0);
-                const precioConIva = to6(selectedLevel.priceWithTax || 0);
+                const precioConIva = to6(precioSinIva * 1.16);
                 const cantidadFactura = Number(line.cantidad_factura || 0);
                 return { ...line, nivel_precio: nextLevel, precio_manual_sin_iva: precioSinIva, precio_manual_con_iva: precioConIva, total_neto: to6(cantidadFactura * precioSinIva), total_bruto: to6(cantidadFactura * precioConIva) };
             }
@@ -383,10 +400,11 @@ export default function CotizacionClienteFormView({ id }) {
     }
 
     function buildPrintableHtml({ includeIva }) {
-        const totalValue = includeIva ? totalConIva : totalSinIva;
+        const totalValue = includeIva ? totalSinIva * 1.16 : totalSinIva;
         const rowsHtml = lineas.map((line, index) => {
-            const unitPrice = includeIva ? line.precio_manual_con_iva : line.precio_manual_sin_iva;
-            const amount = includeIva ? line.total_bruto : line.total_neto;
+            const basePriceWithoutIva = line.precio_manual_sin_iva || 0;
+            const unitPrice = includeIva ? basePriceWithoutIva * 1.16 : basePriceWithoutIva;
+            const amount = includeIva ? (basePriceWithoutIva * 1.16 * Number(line.cantidad_factura || 0)) : (basePriceWithoutIva * Number(line.cantidad_factura || 0));
             const almacenSeleccionado = (line.almacenes_stock || []).find((almacen) => Number(almacen.id_almacen) === Number(line.id_almacen));
             const descripcionBase = `${line.producto_nombre || ""}${line.presentacion_nombre ? `, ${line.presentacion_nombre}` : ""}`.trim() || line.descripcion_personalizada || "-";
             const descripcion = `${descripcionBase} | Tipo: ${String(line.unidad || "pieza").toUpperCase()}${almacenSeleccionado ? ` | Almacen: ${almacenSeleccionado.nombre}` : ""}`;
@@ -448,6 +466,16 @@ export default function CotizacionClienteFormView({ id }) {
         popup.focus();
     }
 
+    async function handleGeneratePDF(cotizacionId, includeIva) {
+        try {
+            const ivaParam = includeIva ? "1" : "0";
+            const url = `/api/cotizaciones-clientes?id=${encodeURIComponent(cotizacionId)}&pdf=1&iva=${ivaParam}`;
+            window.open(url, "_blank");
+        } catch (e) {
+            setError(e.message || "No se pudo generar el PDF");
+        }
+    }
+
     async function handleSave() {
         if (!selectedCliente?.id_cliente) { setError("Selecciona un cliente"); return; }
         if (!fechaEmision) { setError("Ingresa la fecha de emision"); return; }
@@ -467,20 +495,23 @@ export default function CotizacionClienteFormView({ id }) {
         const payload = {
             id_cliente: Number(selectedCliente.id_cliente),
             id_usuario: Number(authUser.id),
-            tipo_presentacion: (lineas[0]?.unidad || "pieza"),
             fecha_emision: fechaEmision,
+            vigencia_modo: vigenciaMode,
             vigencia_dias: vigencia,
+            fecha_vencimiento: fechaExpiracion,
             detalles: lineas.map((line) => ({
                 id_producto: Number(line.id_producto || 0),
+                id_presentacion: Number(line.id_presentacion || line.id_presentacion_default || 0),
+                id_almacen: line.id_almacen ? Number(line.id_almacen) : null,
                 cantidad: Number(line.cantidad_factura || 0),
-                precio: Number(line.precio_manual_sin_iva || 0),
-                descripcion_personalizada: String(line.descripcion_personalizada || "").trim(),
-                requerimiento: String(line.requerimiento || "").trim(),
-                cantidad_sistema: Number(line.cantidad_sistema || 0),
                 cantidad_factura: Number(line.cantidad_factura || 0),
-                unidad: String(line.unidad || "pieza"),
+                cantidad_sistema: Number(line.cantidad_sistema || 0),
+                nivel_precio: Number(line.nivel_precio || 1),
                 precio_sin_iva: Number(line.precio_manual_sin_iva || 0),
                 precio_con_iva: Number(line.precio_manual_con_iva || 0),
+                descripcion_personalizada: String(line.descripcion_personalizada || "").trim(),
+                requerimiento: String(line.requerimiento || "").trim(),
+                unidad: String(line.unidad || "pieza"),
             })),
         };
 
@@ -595,16 +626,18 @@ export default function CotizacionClienteFormView({ id }) {
                         </div>
 
                         <div className="flex flex-col gap-2 pl-5 pr-5 pb-5">
-                            <div className="flex justify-between gap-4">
-                                <Button variant="danger" className="w-full" onClick={() => openPrintPreview(true)}>Generar PDF (con IVA)</Button>
-                                <Button variant="danger" className="w-full" onClick={() => openPrintPreview(false)}>Generar PDF (sin IVA)</Button>
-                                {/* {isEditing ? (
-                                    <>
-                                        <Button variant="danger" className="w-full" onClick={() => openPrintPreview(true)}>Generar PDF (con IVA)</Button>
-                                        <Button variant="danger" className="w-full" onClick={() => openPrintPreview(false)}>Generar PDF (sin IVA)</Button>
-                                    </>
-                                ) : null} */}
-                            </div>
+                            {isEditing ? (
+                                <div className="flex gap-2 mb-2">
+                                    <Button variant="generate" title="PDF con IVA" className="w-full gap-2" onClick={() => handleGeneratePDF(id, true)}>
+                                        <FileDown size={16} />
+                                        Descargar PDF (con IVA)
+                                    </Button>
+                                    <Button variant="generate" title="PDF sin IVA" className="w-full gap-2" onClick={() => handleGeneratePDF(id, false)}>
+                                        <FileDown size={16} />
+                                        Descargar PDF (sin IVA)
+                                    </Button>
+                                </div>
+                            ) : null}
                             <Button onClick={handleSave} disabled={saving} className="w-full">{saving ? "Guardando..." : isEditing ? "Guardar cambios" : "Crear cotizacion"}</Button>
                         </div>
                     </div>
@@ -627,8 +660,8 @@ export default function CotizacionClienteFormView({ id }) {
                                     <th className="text-center p-3">Tipo</th>
                                     <th className="text-center p-3">Piezas</th>
                                     <th className="text-center p-3">Nivel Precio</th>
-                                    <th className="text-center p-3">Precio Manual c/IVA</th>
                                     <th className="text-center p-3">Precio Manual s/IVA</th>
+                                    <th className="text-center p-3">Precio Manual c/IVA</th>
                                     <th className="text-center p-3">Total</th>
                                     <th className="text-center p-3">Almacen</th>
                                     <th className="text-center p-3">Stock</th>
@@ -647,13 +680,13 @@ export default function CotizacionClienteFormView({ id }) {
                                             </div>
                                         </td>
                                         <td className="p-3 min-w-[220px] align-top">
-                                            <p className="font-medium text-primary">{line.producto_nombre || ""}{line.presentacion_nombre ? `, ${line.presentacion_nombre}` : ""}</p>
-                                            <p className="text-xs text-muted">{line.presentacion_nombre || "Presentacion"}</p>
+                                            <p className="font-medium text-primary">{line.presentacion_nombre ? ` ${line.presentacion_nombre}` : ""}</p>
+                                            <p className="text-xs text-muted">{line.producto_nombre}</p>
                                             <p className="text-xs text-muted">Linea #{index + 1}</p>
                                         </td>
                                         <td className="p-3 text-center align-top"><Button variant="lightghost" className="p-1.5 h-auto" onClick={() => removeLinea(line.uid)}><Trash2 size={16} className="text-red-600" /></Button></td>
                                         <td className="p-3 text-right align-top">
-                                            <input type="number" value={line.cantidad_factura_input ?? String(line.cantidad_factura || "")} onChange={(e) => updateLinea(line.uid, "cantidad_factura", e.target.value)} className="w-18 rounded-lg border border-border px-2 py-1 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" onMouseDown={e => e.stopPropagation()} />
+                                            <input type="number" value={line.cantidad_factura_input != null ? line.cantidad_factura_input : String(line.cantidad_factura || "")} onChange={(e) => updateLinea(line.uid, "cantidad_factura", e.target.value)} className="w-18 rounded-lg border border-border px-2 py-1 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" onMouseDown={e => e.stopPropagation()} />
                                             {line.is_invalid_qty ? <p className="text-[10px] text-red-600 mt-1">Debe ser mayor a 0</p> : null}
                                             {line.exceeds_stock_almacen ? <p className="text-[10px] text-red-600 mt-1">Supera el stock del almacén</p> : null}
                                         </td>
@@ -665,15 +698,15 @@ export default function CotizacionClienteFormView({ id }) {
                                         <td className="p-3 py-4 text-center align-top">{line.piezas_por_presentacion || 1}</td>
                                         <td className="p-3 align-top">
                                             <select className="w-35 rounded-lg border border-border px-2 py-1 text-sm" value={line.nivel_precio || 1} onChange={(e) => updateLinea(line.uid, "nivel_precio", e.target.value)} onMouseDown={e => e.stopPropagation()}>
-                                                {(line.niveles_precio || []).map((nivel) => (<option key={`${line.uid}-${nivel.level}`} value={nivel.level}>{nivel.label} - {fmtMoney(nivel.priceWithTax)}</option>))}
+                                                {(line.niveles_precio || []).map((nivel) => (<option key={`${line.uid}-${nivel.level}`} value={nivel.level}>{nivel.label} - {fmtMoney(nivel.priceWithoutTax)}</option>))}
                                             </select>
                                         </td>
-                                        <td className="p-3 text-right align-top"><input type="number" step="0.01" min="0" value={line.precio_manual_con_iva} onChange={(e) => updateLinea(line.uid, "precio_manual_con_iva", e.target.value)} className="w-28 rounded-lg border border-border px-2 py-1 text-right" onMouseDown={e => e.stopPropagation()} /></td>
                                         <td className="p-3 text-right align-top"><input type="number" step="0.01" min="0" value={line.precio_manual_sin_iva} onChange={(e) => updateLinea(line.uid, "precio_manual_sin_iva", e.target.value)} className="w-28 rounded-lg border border-border px-2 py-1 text-right" onMouseDown={e => e.stopPropagation()} /></td>
+                                        <td className="p-3 text-right align-top"><input type="number" step="0.01" min="0" value={line.precio_manual_con_iva} onChange={(e) => updateLinea(line.uid, "precio_manual_con_iva", e.target.value)} className="w-28 rounded-lg border border-border px-2 py-1 text-right" onMouseDown={e => e.stopPropagation()} /></td>
                                         <td className="p-3 py-4 text-right font-semibold text-primary align-top">{fmtMoney(line.total_bruto)}</td>
                                         <td className="p-3 text-center align-top"><select className="w-44 rounded-lg border border-border px-2 py-1 text-sm" value={line.id_almacen || ""} onChange={(e) => updateLinea(line.uid, "id_almacen", e.target.value)} onMouseDown={e => e.stopPropagation()}><option value="">Selecciona</option>{(line.almacenes_stock || []).map((almacen) => (<option key={`${line.uid}-almacen-${almacen.id_almacen}`} value={almacen.id_almacen}>{almacen.nombre}</option>))}</select></td>
                                         <td className="p-3 py-4 text-center align-top">{Number(line.stock_almacen || 0)}</td>
-                                        <td className="p-3 min-w-[260px] align-top"><input onChange={(e) => updateLinea(line.uid, "descripcion_personalizada", e.target.value)} className="w-full rounded-lg border border-border px-2 py-1" placeholder="Descripcion personalizada..." onMouseDown={e => e.stopPropagation()} /></td>
+                                        <td className="p-3 min-w-[260px] align-top"><input value={line.descripcion_personalizada || ""} onChange={(e) => updateLinea(line.uid, "descripcion_personalizada", e.target.value)} className="w-full rounded-lg border border-border px-2 py-1" placeholder="Descripcion personalizada..." onMouseDown={e => e.stopPropagation()} /></td>
                                     </tr>
                                 ))}
                             </tbody>

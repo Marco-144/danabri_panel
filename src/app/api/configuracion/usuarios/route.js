@@ -6,6 +6,36 @@ import {
     updateUsuario,
 } from "@/modules/configuracion.service";
 
+async function readBody(req) {
+    const contentType = req.headers.get("content-type") || "";
+
+    if (contentType.includes("multipart/form-data")) {
+        const formData = await req.formData();
+        const body = {};
+
+        for (const [key, value] of formData.entries()) {
+            if (typeof value === "string") {
+                if (key === "roles") {
+                    try {
+                        body[key] = JSON.parse(value);
+                    } catch {
+                        body[key] = value;
+                    }
+                } else {
+                    body[key] = value;
+                }
+                continue;
+            }
+
+            body[key] = value;
+        }
+
+        return body;
+    }
+
+    return req.json();
+}
+
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -24,7 +54,7 @@ export async function GET(req) {
 
 export async function POST(req) {
     try {
-        const body = await req.json();
+        const body = await readBody(req);
         return Response.json(await createUsuario(body));
     } catch (error) {
         return Response.json({ error: error.message }, { status: 400 });
@@ -33,7 +63,7 @@ export async function POST(req) {
 
 export async function PATCH(req) {
     try {
-        const body = await req.json();
+        const body = await readBody(req);
         const id = body.id_usuario ?? body.id;
 
         if (!id) {

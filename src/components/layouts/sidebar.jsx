@@ -5,9 +5,10 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import {
-  Box, Boxes, ChevronRight, LayoutDashboard, LogOut, Map, Package, Settings, ShoppingBag, ArrowRightLeft, Warehouse, FileInput, Building2,
+  Boxes, ChevronRight, LayoutDashboard, LogOut, Map, Package, Settings, ShoppingBag, ArrowRightLeft, Warehouse, FileInput, Building2,
   Truck, UserRound, Users, ChartNoAxesGantt, ChartBarStacked, ScanBarcode, BookMarked, ShelvingUnit, Siren, ReceiptText, CircleDollarSign,
-  FileText, Combine, ShoppingBasket, ExternalLink } from "lucide-react";
+  FileText, Combine, ShoppingBasket, ExternalLink
+} from "lucide-react";
 import { clearAuthToken, getAuthToken, getAuthUserFromToken, isTokenExpired } from "@/services/auth";
 /* import path from "node:path"; */
 
@@ -69,6 +70,7 @@ export default function Sidebar() {
   const almacenesSelected = pathname === "/almacenes";
   const proveedoresSelected = pathname === "/proveedores";
   const empresasSelected = pathname === "/empresas";
+  const usuariosSelected = pathname === "/usuarios";
 
   const linkBaseClass =
     "w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2";
@@ -383,8 +385,8 @@ export default function Sidebar() {
           aria-expanded={proveedoresExpanded}
           aria-controls="submenu-proveedores">
           <span className="flex items-center gap-2">
-            <Box size={16} />
-            <span>Compras</span>
+            <Truck size={16} />
+            <span>Proveedores</span>
           </span>
           <span className={`transition-transform duration-400 ${proveedoresExpanded ? "rotate-90" : "rotate-0"}`}>
             <ChevronRight size={16} />
@@ -440,7 +442,7 @@ export default function Sidebar() {
           <ShoppingBag size={16} />
           <span>Ventas de POS</span>
         </Link>
-        
+
         <Link href="http://32.193.208.224/punto-venta/" target="_blank"
           className={`${linkBaseClass} justify-between  ${pathname === "/punto-venta" || pathname.startsWith("/punto-venta/")
             ? "bg-accent text-white font-medium"
@@ -474,6 +476,16 @@ export default function Sidebar() {
           <Settings size={16} />
           <span>Configuracion</span>
         </Link>
+        <Link
+          href="/usuarios"
+          className={`${usuariosSelected
+            ? "bg-accent text-white font-medium"
+            : "text-gray-300 hover:bg-slidehover hover:text-white"
+            } ${linkBaseClass}`}>
+          <Users size={16} />
+          <span>Usuarios</span>
+        </Link>
+
       </nav>
 
       <div className="sticky bottom-0 z-20 border-t border-white/10 p-4 space-y-3 bg-primary/95 backdrop-blur-sm">

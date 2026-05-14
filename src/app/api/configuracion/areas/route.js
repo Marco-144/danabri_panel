@@ -1,13 +1,13 @@
 import {
-    createRol,
-    deleteRol,
-    getRolesConPermisos,
-    updateRol,
+    createArea,
+    deleteArea,
+    getAreas,
+    updateArea,
 } from "@/modules/configuracion.service";
 
 export async function GET() {
     try {
-        return Response.json(await getRolesConPermisos());
+        return Response.json(await getAreas());
     } catch (error) {
         return Response.json({ error: error.message }, { status: 400 });
     }
@@ -16,7 +16,7 @@ export async function GET() {
 export async function POST(req) {
     try {
         const body = await req.json();
-        return Response.json(await createRol(body));
+        return Response.json(await createArea(body));
     } catch (error) {
         return Response.json({ error: error.message }, { status: 400 });
     }
@@ -25,7 +25,7 @@ export async function POST(req) {
 export async function PATCH(req) {
     try {
         const body = await req.json();
-        return Response.json(await updateRol(body.id_rol, body));
+        return Response.json(await updateArea(body.id_area, body));
     } catch (error) {
         return Response.json({ error: error.message }, { status: 400 });
     }
@@ -34,7 +34,7 @@ export async function PATCH(req) {
 export async function DELETE(req) {
     try {
         const body = await req.json();
-        return Response.json(await deleteRol(body.id_rol));
+        return Response.json(await deleteArea(body.id_area));
     } catch (error) {
         return Response.json({ error: error.message }, { status: 400 });
     }

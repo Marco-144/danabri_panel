@@ -8,6 +8,7 @@ import { Check, Eye, FileText, Funnel, Loader, Pencil, Plus, ReceiptText, Search
 import StatKpiCard from "@/components/ui/StatKpiCard";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import Select from "@/components/ui/Select";
 import { FilterPopover, FilterChip } from "@/components/ui/FilterPopover";
 import PageTitle from "@/components/ui/PageTitle";
 import {
@@ -55,6 +56,16 @@ function RemisionesClientesListView() {
     const [search, setSearch] = useState("");
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [filters, setFilters] = useState({ estado: "", facturado: "", desde: "", hasta: "" });
+    const [facturaModal, setFacturaModal] = useState({ open: false, row: null });
+    const [facturaForm, setFacturaForm] = useState({
+        fecha_factura: new Date().toISOString().slice(0, 10),
+        correo_destino: "",
+        metodo_pago: "PUE",
+        forma_pago: "03",
+        uso_cfdi: "G03",
+        regimen_fiscal: "601",
+        observaciones: "",
+    });
 
     const loadData = useCallback(async () => {
         try {
@@ -97,9 +108,32 @@ function RemisionesClientesListView() {
         }
     }
 
-    async function handleFacturar(row) {
+    function buildFacturaFolioPreview(folioRemision) {
+        return folioRemision ? `FAC-${folioRemision}` : "-";
+    }
+
+    function handleFacturar(row) {
+        // Open modal prefilled
+        setFacturaModal({ open: true, row });
+        setFacturaForm((prev) => ({
+            ...prev,
+            fecha_factura: new Date().toISOString().slice(0, 10),
+            correo_destino: row?.cliente_email || "",
+        }));
+    }
+
+    async function handleFacturarSubmit(event) {
+        event.preventDefault();
+        if (!facturaModal.row) return;
+
+        const folioFactura = buildFacturaFolioPreview(facturaModal.row?.folio);
+
         try {
-            await facturarRemisionCliente(row.id_remision);
+            await facturarRemisionCliente(facturaModal.row.id_remision, {
+                ...facturaForm,
+                folio_factura: folioFactura,
+            });
+            setFacturaModal({ open: false, row: null });
             await loadData();
         } catch (e) {
             setError(e.message || "No se pudo facturar la remision");
@@ -229,6 +263,7 @@ function RemisionesClientesListView() {
                                         <Button variant="lightghost" className="p-1.5 h-auto hover:text-red-600" title="Eliminar" onClick={() => handleDelete(row)}>
                                             <Trash2 size={16} />
                                         </Button>
+                                        <div className="border-l-2 h-6 text-gray-400" />
                                         {!row.facturado ? (
                                             <Button variant="lightghost" className="p-1.5 h-auto" title="Facturar" onClick={() => handleFacturar(row)}>
                                                 <FileText size={16} />
@@ -244,6 +279,92 @@ function RemisionesClientesListView() {
                     </tbody>
                 </table>
             </div>
+
+            {facturaModal.open ? (
+                <div className="fixed inset-0 bg-primary/40 z-50 flex items-center justify-center p-4">
+                    <form onSubmit={handleFacturarSubmit} className="bg-white w-full max-w-3xl rounded-2xl border border-border shadow-card p-5 space-y-4">
+                        <h3 className="text-lg font-semibold text-primary">Facturar remision</h3>
+                        <p className="text-sm text-muted">{facturaModal.row?.folio}</p>
+                        <p className="text-sm font-medium text-primary">
+                            Folio factura generado: {buildFacturaFolioPreview(facturaModal.row?.folio)}
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input label="Fecha factura" type="date" value={facturaForm.fecha_factura} onChange={(e) => setFacturaForm((prev) => ({ ...prev, fecha_factura: e.target.value }))} />
+                            <div>
+                                <Input label="Correo destino" value={facturaForm.correo_destino} onChange={(e) => setFacturaForm((prev) => ({ ...prev, correo_destino: e.target.value }))} />
+                                <p className="text-xs text-muted italic pl-2 ">
+                                    Se enviará una copia de la factura a este correo y a facturacion.danabri@gmail.com
+                                </p>
+                            </div>
+                            <Select
+                                label="Metodo pago*"
+                                value={facturaForm.metodo_pago}
+                                onChange={(e) => setFacturaForm((prev) => ({ ...prev, metodo_pago: e.target.value }))}
+                                options={[
+                                    { value: "PUE", label: "PUE - Pago en una sola exhibición" },
+                                    { value: "PPD", label: "PPD - Pago en parcialidades o diferido" }
+                                ]}
+                            />
+                            <Select
+                                label="Forma pago*"
+                                value={facturaForm.forma_pago}
+                                onChange={(e) => setFacturaForm((prev) => ({ ...prev, forma_pago: e.target.value }))}
+                                options={[
+                                    { value: "01", label: "01 - Efectivo" },
+                                    { value: "02", label: "02 - Cheque nominativo" },
+                                    { value: "03", label: "03 - Transferencia" },
+                                    { value: "04", label: "04 - Tarjeta crédito" },
+                                    { value: "28", label: "28 - Tarjeta débito" },
+                                    { value: "99", label: "99 - Por definir" },
+                                ]}
+                            />
+                            <Select
+                                label="Uso CFDI *"
+                                value={facturaForm.uso_cfdi}
+                                onChange={(e) => setFacturaForm((prev) => ({ ...prev, uso_cfdi: e.target.value }))}
+                                options={[
+                                    { value: "G01", label: "G01 - Adquisición de mercancías" },
+                                    { value: "G02", label: "G02 - Devolución, descuentos o bonificaciones" },
+                                    { value: "G03", label: "G03 - Gastos en general" },
+                                    { value: "I02", label: "I02 - Mobiliario y equipo de oficina por inversiones" },
+                                    { value: "I04", label: "I04 - Equipo de computo y accesorios" },
+                                    { value: "I08", label: "I08 - Otra maquinaria y equipo" },
+                                    { value: "S01", label: "S01 - Sin efectos fiscales" }
+                                ]}
+                            />
+                            <Select
+                                label="Regimen fiscal *"
+                                value={facturaForm.regimen_fiscal}
+                                onChange={(e) => setFacturaForm((prev) => ({ ...prev, regimen_fiscal: e.target.value }))}
+                                options={[
+                                    { value: "601", label: "601 - General de Ley Personas Morales" },
+                                    { value: "603", label: "603 - Personas Morales con Fines no Lucrativos" },
+                                    { value: "605", label: "605 - Sueldos y Salarios e Ingresos Asimilados a Salarios" },
+                                    { value: "606", label: "606 - Arrendamiento" },
+                                    { value: "607", label: "607 - Régimen de Enajenación o Adquisición de Bienes" },
+                                    { value: "608", label: "608 - Demás ingresos" },
+                                ]}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-sm text-muted block mb-1">Observaciones</label>
+                            <textarea
+                                rows={3}
+                                value={facturaForm.observaciones}
+                                onChange={(e) => setFacturaForm((prev) => ({ ...prev, observaciones: e.target.value }))}
+                                className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+                            />
+                        </div>
+
+                        <div className="flex justify-end gap-2">
+                            <Button type="button" variant="outline" onClick={() => setFacturaModal({ open: false, row: null })}>Cancelar</Button>
+                            <Button type="submit">Facturar</Button>
+                        </div>
+                    </form>
+                </div>
+            ) : null}
         </div>
     );
 }

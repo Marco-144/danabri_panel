@@ -726,7 +726,7 @@ export async function reversorMovimientoRemision(conn, id_remision) {
     }
 }
 
-export async function getAlertasStock({ id_almacen = null, search = "" } = {}) {
+export async function getAlertasStock({ id_almacen = null, search = "", id_rack = null, id_marca = null, id_proveedor = null } = {}) {
     let sql = `
     SELECT
             al.id_alerta_stock,
@@ -741,12 +741,18 @@ export async function getAlertasStock({ id_almacen = null, search = "" } = {}) {
             al.cantidad_sugerida AS sugerido_resurtido,
             al.created_at,
       i.stock,
-            i.stock_minimo
+            i.stock_minimo,
+      p.id_marca,
+      m.nombre AS marca_nombre,
+      COALESCE(pp.id_proveedor, p.id_proveedor) AS id_proveedor,
+      prov.nombre AS proveedor_nombre
         FROM alertas_stock al
         INNER JOIN almacenes a ON a.id_almacen = al.id_almacen
         INNER JOIN producto_presentaciones pp ON pp.id_presentacion = al.id_presentacion
     INNER JOIN productos p ON p.id_producto = pp.id_producto
         LEFT JOIN inventario i ON i.id_almacen = al.id_almacen AND i.id_presentacion = al.id_presentacion
+        LEFT JOIN marcas m ON m.id_marca = p.id_marca
+        LEFT JOIN proveedores prov ON prov.id_proveedor = COALESCE(pp.id_proveedor, p.id_proveedor)
         WHERE 1=1
   `;
 
@@ -755,6 +761,16 @@ export async function getAlertasStock({ id_almacen = null, search = "" } = {}) {
     if (id_almacen) {
         sql += " AND al.id_almacen = ?";
         params.push(toPositiveInt(id_almacen, "id_almacen"));
+    }
+
+    if (id_marca) {
+        sql += " AND p.id_marca = ?";
+        params.push(toPositiveInt(id_marca, "id_marca"));
+    }
+
+    if (id_proveedor) {
+        sql += " AND COALESCE(pp.id_proveedor, p.id_proveedor) = ?";
+        params.push(toPositiveInt(id_proveedor, "id_proveedor"));
     }
 
     if (search) {

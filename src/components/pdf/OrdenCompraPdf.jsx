@@ -258,10 +258,10 @@ export default function OrdenCompraPdf({ orden }) {
                             detalles.map((item, index) => (
                                 <View key={item.id_detalle || `${item.id_presentacion}-${index}`} style={[styles.row, index === detalles.length - 1 ? styles.rowLast : null]}>
                                     <View style={[styles.cell, styles.colProduct]}>
-                                        <Text style={styles.productName}>{item.presentacion_nombre || "-"}</Text>
-                                        <Text style={styles.productMeta}>{item.producto_nombre || "-"}</Text>
+                                        <Text style={styles.productName}>{item.presentacion_nombre || item.descripcion_manual || "-"}</Text>
+                                        <Text style={styles.productMeta}>{item.producto_nombre || item.descripcion_manual || "-"}</Text>
                                     </View>
-                                    <Text style={[styles.cell, styles.colCode]}>{item.codigo_barras || "-"}</Text>
+                                    <Text style={[styles.cell, styles.colCode]}>{item.codigo_barras || item.codigo_manual || "-"}</Text>
                                     <Text style={[styles.cell, styles.colQty]}>{item.cantidad ?? 0}</Text>
                                     <Text style={[styles.cell, styles.colUnit]}>{formatCurrency(item.costo_unitario)}</Text>
                                     <Text style={[styles.cell, styles.colSubtotal]}>{formatCurrency(item.subtotal)}</Text>

@@ -112,6 +112,7 @@ function parseListRow(row) {
         total_sin_iva: Number(row.total_sin_iva || 0),
         total_con_iva: Number(row.total_con_iva || 0),
         saldo_pendiente: Number(row.saldo_pendiente || 0),
+        total_abonado: Number(row.total_abonado || 0),
         estado_pago: row.estado_pago,
         facturada: Boolean(row.facturada),
         folio_factura: row.folio_factura,
@@ -241,6 +242,7 @@ export async function getRemisionesEmpresas({
             re.total_sin_iva,
             re.total_con_iva,
             re.saldo_pendiente,
+            COALESCE((SELECT SUM(ab.monto) FROM abonos_remision_empresa ab WHERE ab.id_remision_empresa = re.id_remision_empresa), 0) AS total_abonado,
             re.estado_pago,
             re.facturada,
             re.folio_factura,
@@ -318,6 +320,7 @@ export async function getRemisionEmpresaById(id) {
             re.total_sin_iva,
             re.total_con_iva,
             re.saldo_pendiente,
+            COALESCE((SELECT SUM(ab.monto) FROM abonos_remision_empresa ab WHERE ab.id_remision_empresa = re.id_remision_empresa), 0) AS total_abonado,
             re.estado_pago,
             re.facturada,
             re.folio_factura,
@@ -344,26 +347,30 @@ export async function getRemisionEmpresaById(id) {
     const [detalles] = await db.execute(
         `
         SELECT
-            id_detalle_remision_empresa,
-            id_presentacion,
-            id_almacen,
-            descripcion,
-            requerimiento,
-            cantidad_sistema,
-            cantidad_factura,
-            unidad,
-            precio_sin_iva,
-            precio_con_iva,
-            total_sin_iva,
-            total_con_iva,
-            piso,
-            bodega,
-            orden,
-            (SELECT pp.nombre FROM producto_presentaciones pp WHERE pp.id_presentacion = detalle_remision_empresa.id_presentacion LIMIT 1) AS presentacion_nombre,
-            (SELECT a.nombre FROM almacenes a WHERE a.id_almacen = detalle_remision_empresa.id_almacen LIMIT 1) AS almacen_nombre
-        FROM detalle_remision_empresa
-        WHERE id_remision_empresa = ?
-        ORDER BY orden ASC, id_detalle_remision_empresa ASC
+            de.id_detalle_remision_empresa,
+            de.id_presentacion,
+            de.id_almacen,
+            de.descripcion,
+            de.requerimiento,
+            de.cantidad_sistema,
+            de.cantidad_factura,
+            de.unidad,
+            de.precio_sin_iva,
+            de.precio_con_iva,
+            de.total_sin_iva,
+            de.total_con_iva,
+            de.piso,
+            de.bodega,
+            de.orden,
+            p.nombre AS producto_nombre,
+            pp.nombre AS presentacion_nombre,
+            a.nombre AS almacen_nombre
+        FROM detalle_remision_empresa de
+        LEFT JOIN producto_presentaciones pp ON pp.id_presentacion = de.id_presentacion
+        LEFT JOIN productos p ON p.id_producto = pp.id_producto
+        LEFT JOIN almacenes a ON a.id_almacen = de.id_almacen
+        WHERE de.id_remision_empresa = ?
+        ORDER BY de.orden ASC, de.id_detalle_remision_empresa ASC
         `,
         [idRemision]
     );
@@ -380,6 +387,7 @@ export async function getRemisionEmpresaById(id) {
             id_detalle_remision_empresa: line.id_detalle_remision_empresa,
             id_presentacion: Number(line.id_presentacion || 0),
             id_almacen: Number(line.id_almacen || 0),
+            producto_nombre: line.producto_nombre || "",
             presentacion_nombre: line.presentacion_nombre || "",
             almacen_nombre: line.almacen_nombre || "",
             descripcion: line.descripcion,
@@ -507,7 +515,7 @@ export async function createRemisionEmpresa(payload) {
                     piso,
                     bodega,
                     orden
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
                 [
                     idRemision,
@@ -643,7 +651,7 @@ export async function updateRemisionEmpresa(id, payload) {
                     piso,
                     bodega,
                     orden
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
                 [
                     idRemision,

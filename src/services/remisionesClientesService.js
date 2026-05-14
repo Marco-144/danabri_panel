@@ -54,10 +54,11 @@ export async function deleteRemisionCliente(id) {
     }));
 }
 
-export async function facturarRemisionCliente(id) {
+export async function facturarRemisionCliente(id, payload = {}) {
+    const body = { id_remision: id, ...payload };
     return parseOrThrow(await fetch(API_FACTURAR, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id_remision: id }),
+        body: JSON.stringify(body),
     }));
 }

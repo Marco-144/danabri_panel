@@ -18,12 +18,14 @@ export async function GET(req) {
         const search = searchParams.get("search") || "";
         const cp = searchParams.get("cp") || "";
         const hasRfc = searchParams.get("has_rfc") || "all";
+        const activo = searchParams.get("activo") || "all";
 
         return Response.json(
             await getEmpresas({
                 search,
                 cp,
                 hasRfc,
+                activo,
             })
         );
     } catch (error) {

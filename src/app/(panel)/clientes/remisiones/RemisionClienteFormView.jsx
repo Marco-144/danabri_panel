@@ -175,7 +175,7 @@ function mapCotizacionLineaToRemision(line, clienteNivelPrecio, index, defaultAl
     const { levels, selectedLevel } = resolveInitialPriceLevel(line, clienteNivelPrecio);
     const cantidad = Number(line.cantidad || 1);
     const precio = round6(selectedLevel.priceWithTax || line.precio || 0);
-    const idPresentacion = Number(line.id_presentacion_default || line.id_presentacion);
+    const idPresentacion = Number(line.id_presentacion || line.id_presentacion_default);
 
     if (!idPresentacion) {
         throw new Error(`Producto "${line.producto_nombre}" sin presentación válida`);
@@ -185,7 +185,7 @@ function mapCotizacionLineaToRemision(line, clienteNivelPrecio, index, defaultAl
         uid: `${Date.now()}-${index}`,
         id_presentacion: idPresentacion,
         id_almacen: Number(defaultAlmacenId || 0),
-        presentacion_nombre: line.presentacion_nombre_default || line.presentacion_nombre || "",
+        presentacion_nombre: line.presentacion_nombre || line.presentacion_nombre_default || "",
         producto_nombre: line.producto_nombre || "",
         cantidad,
         precio,

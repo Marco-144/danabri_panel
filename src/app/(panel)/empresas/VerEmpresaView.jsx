@@ -1,18 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { ArrowLeft, Loader, Store, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
-import { getProveedorById } from "@/services/suppliersService";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Building2, Loader, Pencil, Plus } from "lucide-react";
+import { getEmpresaById } from "@/services/empresasService";
 import Button from "@/components/ui/Button";
 import PageTitle from "@/components/ui/PageTitle";
-import FieldCard from "@/components/ui/FieldCard";
 
-export default function VerProveedorView({ id: propId }) {
-    const params = useParams();
-    const id = propId ?? params?.id;
-    const [proveedor, setProveedor] = useState(null);
+function fmtDate(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleDateString("es-MX");
+}
+
+export default function VerEmpresaView({ id }) {
+    const [empresa, setEmpresa] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
@@ -21,20 +24,20 @@ export default function VerProveedorView({ id: propId }) {
     useEffect(() => {
         if (!id) return;
 
-        const loadProveedor = async () => {
+        const loadEmpresa = async () => {
             try {
                 setLoading(true);
-                const data = await getProveedorById(id);
-                setProveedor(data.data || data);
+                const result = await getEmpresaById(id);
+                setEmpresa(result.data || result);
                 setError("");
             } catch {
-                setError("No se pudo cargar el proveedor");
+                setError("No se pudo cargar la empresa");
             } finally {
                 setLoading(false);
             }
         };
 
-        loadProveedor();
+        loadEmpresa();
     }, [id]);
 
     if (loading) {
@@ -45,39 +48,37 @@ export default function VerProveedorView({ id: propId }) {
         );
     }
 
-    if (error || !proveedor) {
+    if (error || !empresa) {
         return (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
-                {error || "Proveedor no encontrado"}
+                {error || "Empresa no encontrada"}
             </div>
         );
     }
-
-    const isActivo = proveedor.activo === 1 || proveedor.activo === "1" || proveedor.activo === true;
 
     return (
         <div className="space-y-6">
             <section className="bg-white border border-border rounded-2xl shadow-card overflow-hidden p-6">
                 <PageTitle
-                    breadcrumb="Proveedores / Detalle"
-                    title="Ver Proveedor"
-                    Icon={Store}
+                    breadcrumb="Empresas / Detalle"
+                    title="Ver Empresa"
+                    Icon={Building2}
                     actions={(
                         <div className="flex gap-3">
-                            <Link href={`/proveedores?mode=edit&id=${proveedor.id_proveedor}`}>
+                            <Link href={`/empresas?mode=edit&id=${empresa.id_empresa}`}>
                                 <Button variant="outline" className="rounded-xl shadow-sm">
                                     <Pencil size={16} />
                                     Editar
                                 </Button>
                             </Link>
-                            <Link href="/proveedores?mode=add">
+                            <Link href="/empresas?mode=add">
                                 <Button variant="accent" className="rounded-xl shadow-sm">
                                     <Plus size={16} />
-                                    Nuevo Proveedor
+                                    Nueva Empresa                                
                                 </Button>
                             </Link>
-                            <Link href="/proveedores">
-                                <Button variant="primary" size="lg" className="rounded-xl shadow-sm">
+                            <Link href="/empresas">
+                                <Button variant="primary" className="rounded-xl shadow-sm">
                                     <ArrowLeft size={18} />
                                     Regresar
                                 </Button>
@@ -86,26 +87,27 @@ export default function VerProveedorView({ id: propId }) {
                     )}
                 />
             </section>
-
+            
             <div className="flex gap-4 items-start">
+
                 {/* Sidebar */}
                 <aside className="w-[252px] shrink-0 sticky top-4 bg-white rounded-xl border border-slate-200/80 -sm overflow-hidden">
                     <div className="bg-primary px-6 py-6 flex flex-col items-center text-center">
                         {/* Avatar con inicial del nombre */}
                         <div className="w-[60px] h-[60px] rounded-full bg-white/20 flex items-center justify-center mb-3 ring-2 ring-white/30">
                             <span className="text-[18px] font-bold text-white tracking-wide font-oswald" >
-                                {proveedor.nombre.charAt(0)}
+                                {empresa.nombre.charAt(0)}
                             </span>
                         </div>
                         <h2 className="text-white text-md font-semibold leading-snug font-oswald">
-                            {proveedor.nombre}
+                            {empresa.nombre}
                         </h2>
-                        <p className="text-white/55 text-xs mt-0.5 leading-snug">Proveedor</p>
-                        <span className={`mt-3 inline-flex items-center rounded-full font-medium px-3 py-1 text-xs ${isTrueFlag(proveedor.activo)
+                        <p className="text-white/55 text-xs mt-0.5 leading-snug">Empresa Corporativa</p>
+                        <span className={`mt-3 inline-flex items-center rounded-full font-medium px-3 py-1 text-xs ${isTrueFlag(empresa.activo)
                             ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
                             : "bg-red-50 text-red-700 ring-1 ring-red-200"
                             }`}>
-                            {isTrueFlag(proveedor.activo) ? "Activo" : "Inactivo"}
+                            {isTrueFlag(empresa.activo) ? "Activo" : "Inactivo"}
                         </span>
                     </div>
 
@@ -118,24 +120,24 @@ export default function VerProveedorView({ id: propId }) {
                             <div className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors cursor-default">
                                 <span className="text-sm text-slate-500 leading-snug">Total ventas</span>
                                 <span className="text-sm font-semibold text-slate-800 shrink-0">
-                                    ${proveedor.total_ventas ? Number(proveedor.total_ventas).toLocaleString("es-MX", { style: "currency", currency: "MXN" }) : "0"}
+                                    ${empresa.total_ventas ? Number(empresa.total_ventas).toLocaleString("es-MX", { style: "currency", currency: "MXN" }) : "0"}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors cursor-default">
                                 <span className="text-sm text-slate-500 leading-snug">Última venta</span>
                                 <span className="text-sm font-semibold text-slate-800 shrink-0">
-                                    {proveedor.ultima_compra ? new Date(proveedor.ultima_compra).toLocaleDateString("es-MX") : "N/A"}
+                                    {empresa.ultima_compra ? new Date(empresa.ultima_compra).toLocaleDateString("es-MX") : "N/A"}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors cursor-default">
                                 <span className="text-sm text-slate-500 leading-snug">Saldo Pendiente</span>
                                 <span className="text-sm font-semibold text-slate-800 shrink-0">
-                                    ${proveedor.saldo_pendiente ? Number(proveedor.saldo_pendiente).toLocaleString("es-MX", { style: "currency", currency: "MXN" }) : "0"}
+                                    ${empresa.saldo_pendiente ? Number(empresa.saldo_pendiente).toLocaleString("es-MX", { style: "currency", currency: "MXN" }) : "0"}
                                 </span>
                             </div>
                         </div>
                     </div>
-                </aside>
+                </aside>  
 
                 {/* Content */}
                 <div className="flex-1 min-w-0 bg-white rounded-xl border border-border shadow-sm overflow-hidden">
@@ -147,24 +149,27 @@ export default function VerProveedorView({ id: propId }) {
 
                             <div className="grid grid-cols-3 gap-4 mb-4">
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
-                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Nombre</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.nombre}</p>
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Razón Social</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.nombre_fiscal}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-4 mb-4">
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Nombre Comercial</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.nombre}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
-                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Telefono</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.telefono || "-"}</p>
-                                </div>
-                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
-                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Correo</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.email || "-"}</p>
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Giro</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.giro || "-"}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
                                     <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Estado</p>
-                                    <span className={`mt-3 inline-flex items-center rounded-full font-medium px-3 py-1 text-xs ${isTrueFlag(proveedor.activo)
-                                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                                        : "bg-red-50 text-red-700 ring-1 ring-red-200"
+                                    <span className={`inline-flex items-center rounded-full font-medium px-4 py-1 text-sm ${isTrueFlag(empresa.activo)
+                                        ? 'bg-green-50 text-green-700 ring-1 ring-green-200'
+                                        : 'bg-red-50 text-red-700 ring-1 ring-red-200'
                                         }`}>
-                                        {isTrueFlag(proveedor.activo) ? "Activo" : "Inactivo"}
+                                         {isTrueFlag(empresa.activo) ? "Activo" : "Inactivo"}
                                     </span>
                                 </div>
                             </div>
@@ -172,67 +177,71 @@ export default function VerProveedorView({ id: propId }) {
 
                         <section className="px-8 py-6 border-b border-middleborder">
                             <h3 className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400 mb-5 font-oswald">
-                                Datos fiscales y bancarios
+                                Datos Fiscales
                             </h3>
 
-                            <div className="grid grid-cols-3 gap-4 mb-4">
+                             <div className="grid grid-cols-3 gap-4 mb-4">
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
                                     <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">RFC</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.rfc || "-"}</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.rfc || "-"}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
-                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Metodo de Pago</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.metodo_pago || "-"}</p>
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Uso CFDI</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.uso_cfdi || "-"}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Régimen Fiscal</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.regimen_fiscal || "-"}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
                                     <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Cuenta Bancaria</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.cuenta_bancaria || "-"}</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.cuenta_bancaria || "-"}</p>
                                 </div>
                             </div>
                         </section>
 
                         <section className="px-8 py-6 border-b border-middleborder">
                             <h3 className="text-xs font-bold uppercase tracking-[0.05em] text-slate-400 mb-5 font-oswald">
-                                Dirección
+                                Dirección Fiscal
                             </h3>
 
-                            <div className="grid grid-cols-4 gap-4 mb-4">
+                             <div className="grid grid-cols-3 gap-4 mb-4">
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
                                     <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Calle</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.calle || "-"}</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.calle || "-"}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
-                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Número Exterior</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.num_exterior || "-"}</p>
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Núm. Exterior</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.numero_exterior || "-"}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
-                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Número Interior</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.num_interior || "-"}</p>
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Núm. Interior</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.numero_interior || "-"}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
                                     <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Colonia</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.colonia || "-"}</p>
-                                </div>
-                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
-                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Código Postal</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.cp || "-"}</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.colonia || "-"}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
                                     <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Ciudad</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.ciudad || "-"}</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.ciudad || "-"}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
                                     <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Estado</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.estado || "-"}</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.estado || "-"}</p>
+                                </div>
+                                <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
+                                    <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">Código Postal</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.cp || "-"}</p>
                                 </div>
                                 <div className="border-b border-middleborder rounded-lg bg-white mr-4 px-4 py-3 hover:bg-slate-100 transition-colors cursor-default">
                                     <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-slate-400 mb-0.5">País</p>
-                                    <p className="text-[15px] text-slate-700 font-medium">{proveedor.pais || "-"}</p>
+                                    <p className="text-[15px] text-slate-700 font-medium">{empresa.pais || "-"}</p>
                                 </div>
                             </div>
                         </section>
                     </div>
-                </div>
+                </div>  
             </div>
         </div>
     );

@@ -243,9 +243,9 @@ export default function PagosPendientesPage() {
                         <tr>
                             <th className="text-left p-3">ID</th>
                             <th className="text-left p-3">Proveedor</th>
-                            <th className="text-left p-3">Fecha Creación</th>
-                            <th className="text-left p-3">Fecha Vencimiento</th>
-                            <th className="text-right p-3">Días Restantes</th>
+                            <th className="text-center p-3 w-[100px]">Fecha Creación</th>
+                            <th className="text-center p-3 w-[100px]">Fecha Vencimiento</th>
+                            <th className="text-center p-3 w-[80px]">Días Restantes</th>
                             <th className="text-left p-3">Estado</th>
                             <th className="text-center p-3">Pagada</th>
                             <th className="text-center p-3">Cierre</th>
@@ -267,9 +267,9 @@ export default function PagosPendientesPage() {
                                 <tr key={r.id_factura} className="border-t border-border hover:bg-background/50">
                                     <td className="p-3">{r.id_factura}</td>
                                     <td className="p-3">{r.proveedor_nombre}</td>
-                                    <td className="p-3">{fmtDate(r.created_at)}</td>
-                                    <td className="p-3">{fmtDate(r.fecha_vencimiento)}</td>
-                                    <td className="p-3 text-right">{dias ?? "-"}</td>
+                                    <td className="p-3 text-center w-[100px]">{fmtDate(r.created_at)}</td>
+                                    <td className="p-3 text-center w-[100px]">{fmtDate(r.fecha_vencimiento)}</td>
+                                    <td className="p-3 text-center w-[80px]">{dias ?? "-"}</td>
                                     <td className="p-3">{getEstadoVencimiento(r.fecha_vencimiento, r.estado_pago)}</td>
                                     <td className="p-3 text-center">
                                         {r.estado_pago === "pagada" ? (

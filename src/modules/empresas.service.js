@@ -46,9 +46,28 @@ function toPositiveInt(value, fieldName) {
     return number;
 }
 
+function normalizeActivo(value, { strict = false } = {}) {
+    if (value === undefined || value === null || value === "") {
+        if (strict) {
+            throw new Error("El campo activo es requerido");
+        }
+        return null;
+    }
+
+    if (value === true || value === 1 || value === "1") return 1;
+    if (value === false || value === 0 || value === "0") return 0;
+
+    if (strict) {
+        throw new Error("El campo activo debe ser 0 o 1");
+    }
+
+    return null;
+}
+
 function normalizeEmpresaRow(row) {
     return {
         ...row,
+        activo: normalizeActivo(row.activo) ?? 0,
         rfc: toNullableText(row.rfc),
         pago_habitual: normalizePagoHabitual(row.pago_habitual),
         cp: String(row.cp || "").trim(),
@@ -65,12 +84,14 @@ export async function getEmpresas({
     search = "",
     cp = "",
     hasRfc = "all",
+    activo = "all",
 } = {}) {
     let query = `
         SELECT
             id_empresa,
             nombre,
             rfc,
+            activo,
             cp,
             direccion,
             colonia,
@@ -104,6 +125,14 @@ export async function getEmpresas({
         query += " AND (rfc IS NULL OR TRIM(rfc) = '')";
     }
 
+    if (activo === "1") {
+        query += " AND activo = 1";
+    }
+
+    if (activo === "0") {
+        query += " AND activo = 0";
+    }
+
     query += " ORDER BY id_empresa DESC";
 
     const [rows] = await db.execute(query, params);
@@ -119,6 +148,7 @@ export async function getEmpresaById(id) {
             id_empresa,
             nombre,
             rfc,
+            activo,
             cp,
             direccion,
             colonia,
@@ -151,13 +181,14 @@ export async function createEmpresa(data) {
     const nombreFiscal = toRequiredText(data.nombre_fiscal, "nombre_fiscal");
     const rfc = toNullableText(data.rfc);
     const pagoHabitual = normalizePagoHabitual(data.pago_habitual, { strict: true });
+    const activo = normalizeActivo(data.activo) ?? 1;
 
     const [result] = await db.execute(
         `
-        INSERT INTO empresas (nombre, rfc, cp, direccion, colonia, ciudad, estado, nombre_fiscal, pago_habitual)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO empresas (nombre, rfc, activo, cp, direccion, colonia, ciudad, estado, nombre_fiscal, pago_habitual)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [nombre, rfc, cp, direccion, colonia, ciudad, estado, nombreFiscal, pagoHabitual]
+        [nombre, rfc, activo, cp, direccion, colonia, ciudad, estado, nombreFiscal, pagoHabitual]
     );
 
     return { id_empresa: result.insertId, message: "Empresa creada" };
@@ -176,6 +207,11 @@ export async function updateEmpresa(id, data) {
     if (data.rfc !== undefined) {
         fields.push("rfc = ?");
         params.push(toNullableText(data.rfc));
+    }
+
+    if (data.activo !== undefined) {
+        fields.push("activo = ?");
+        params.push(normalizeActivo(data.activo, { strict: true }));
     }
 
     if (data.cp !== undefined) {

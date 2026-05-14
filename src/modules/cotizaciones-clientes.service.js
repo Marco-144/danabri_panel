@@ -1,6 +1,65 @@
 import db from "@/lib/db";
 import { searchProductosCatalog as searchPresentacionesEmpresaCatalog } from "@/modules/cotizaciones-empresas.service";
 
+let ensureSchemaPromise = null;
+
+async function ensureCotizacionesClienteSchema() {
+    if (ensureSchemaPromise) return ensureSchemaPromise;
+
+    ensureSchemaPromise = (async () => {
+        const [cotizacionColumns] = await db.execute(
+            `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cotizaciones'`
+        );
+        const [detalleColumns] = await db.execute(
+            `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'detalle_cotizacion'`
+        );
+
+        const cotSet = new Set(cotizacionColumns.map((row) => row.COLUMN_NAME));
+        const detSet = new Set(detalleColumns.map((row) => row.COLUMN_NAME));
+
+        if (!cotSet.has("vigencia_modo") || !cotSet.has("vigencia_dias") || !cotSet.has("fecha_vencimiento")) {
+            await db.execute(`
+                ALTER TABLE cotizaciones
+                    ADD COLUMN vigencia_modo enum('dias','manual') NOT NULL DEFAULT 'dias' AFTER total,
+                    ADD COLUMN vigencia_dias int NOT NULL DEFAULT 30 AFTER vigencia_modo,
+                    ADD COLUMN fecha_vencimiento date DEFAULT NULL AFTER vigencia_dias
+            `);
+            await db.execute(`
+                UPDATE cotizaciones
+                SET vigencia_modo = 'dias',
+                    vigencia_dias = 30,
+                    fecha_vencimiento = DATE_ADD(DATE(created_at), INTERVAL 30 DAY)
+            `);
+        }
+
+        if (!detSet.has("id_almacen") || !detSet.has("descripcion_personalizada") || !detSet.has("requerimiento") || !detSet.has("cantidad_sistema") || !detSet.has("unidad") || !detSet.has("nivel_precio") || !detSet.has("precio_sin_iva") || !detSet.has("precio_con_iva")) {
+            await db.execute(`
+                ALTER TABLE detalle_cotizacion
+                    ADD COLUMN id_almacen int DEFAULT NULL AFTER id_presentacion,
+                    ADD COLUMN descripcion_personalizada text DEFAULT NULL AFTER id_almacen,
+                    ADD COLUMN requerimiento varchar(100) DEFAULT NULL AFTER descripcion_personalizada,
+                    ADD COLUMN cantidad_sistema int NOT NULL DEFAULT 0 AFTER requerimiento,
+                    ADD COLUMN unidad enum('pieza','caja','paquete') NOT NULL DEFAULT 'pieza' AFTER cantidad,
+                    ADD COLUMN nivel_precio tinyint NOT NULL DEFAULT 1 AFTER unidad,
+                    ADD COLUMN precio_sin_iva decimal(10,2) NOT NULL DEFAULT 0.00 AFTER precio,
+                    ADD COLUMN precio_con_iva decimal(10,2) NOT NULL DEFAULT 0.00 AFTER precio_sin_iva,
+                    ADD KEY id_almacen (id_almacen),
+                    ADD CONSTRAINT detalle_cotizacion_ibfk_4 FOREIGN KEY (id_almacen) REFERENCES almacenes (id_almacen) ON DELETE SET NULL ON UPDATE CASCADE
+            `);
+            await db.execute(`
+                UPDATE detalle_cotizacion
+                SET cantidad_sistema = CASE WHEN cantidad_sistema > 0 THEN cantidad_sistema ELSE cantidad END,
+                    unidad = 'pieza',
+                    nivel_precio = CASE WHEN nivel_precio > 0 THEN nivel_precio ELSE 1 END,
+                    precio_sin_iva = CASE WHEN precio_sin_iva > 0 THEN precio_sin_iva ELSE precio END,
+                    precio_con_iva = CASE WHEN precio_con_iva > 0 THEN precio_con_iva ELSE ROUND(precio * 1.16, 2) END
+            `);
+        }
+    })();
+
+    return ensureSchemaPromise;
+}
+
 function toPositiveInt(value, fieldName) {
     const number = Number(value);
     if (!Number.isInteger(number) || number <= 0) {
@@ -72,6 +131,9 @@ function normalizeHeaderRow(row) {
         id_usuario: row.id_usuario,
         usuario_nombre: row.usuario_nombre,
         fecha_emision: row.fecha_emision,
+        vigencia_modo: String(row.vigencia_modo || "dias").toLowerCase(),
+        vigencia_dias: Number(row.vigencia_dias || 0),
+        fecha_vencimiento: row.fecha_vencimiento || null,
         estado: row.estado,
         total: Number(row.total || 0),
         created_at: row.created_at,
@@ -81,33 +143,51 @@ function normalizeHeaderRow(row) {
 function normalizeDetalleRow(row) {
     const priceLevels = [1, 2, 3, 4, 5]
         .map((level) => {
-            const priceConIva = Number(row[`precio_nivel_${level}_default`] || 0);
-            if (!Number.isFinite(priceConIva) || priceConIva <= 0) return null;
+            const priceBase = Number(row[`precio_nivel_${level}`] ?? row[`precio_nivel_${level}_default`] ?? 0);
+            if (!Number.isFinite(priceBase) || priceBase <= 0) return null;
 
             return {
                 level,
                 label: `Precio ${level}`,
-                priceWithTax: to6(priceConIva),
-                priceWithoutTax: to6(priceConIva / (1 + 0.16)),
+                priceWithoutTax: to6(priceBase),
+                priceWithTax: to6(priceBase * (1 + 0.16)),
             };
         })
         .filter(Boolean);
 
     const firstLevel = priceLevels[0] || null;
+    const cantidadFactura = Number(row.cantidad_factura || row.cantidad || 0);
+    const cantidadSistema = Number(row.cantidad_sistema || cantidadFactura || 0);
+    const stockAlmacen = Number(row.stock_almacen || 0);
+
+    const almacenesStock = Array.isArray(row.almacenes_stock) ? row.almacenes_stock : [];
 
     return {
         id_detalle: row.id_detalleCotizacion,
         id_producto: row.id_producto,
+        id_presentacion: row.id_presentacion ? Number(row.id_presentacion) : (row.id_presentacion_default ? Number(row.id_presentacion_default) : null),
+        id_almacen: row.id_almacen ? Number(row.id_almacen) : null,
         producto_nombre: row.producto_nombre,
-        cantidad: Number(row.cantidad || 0),
-        precio: Number(row.precio || 0),
+        presentacion_nombre: row.presentacion_nombre || row.presentacion_nombre_default || "",
+        almacen_nombre: row.almacen_nombre || "",
+        cantidad: cantidadFactura,
+        cantidad_factura: cantidadFactura,
+        cantidad_sistema: cantidadSistema,
+        precio: Number(row.precio_sin_iva || row.precio || 0),
         subtotal: Number(row.subtotal || 0),
+        descripcion_personalizada: row.descripcion_personalizada || "",
+        requerimiento: row.requerimiento || "",
+        unidad: String(row.unidad || "pieza"),
+        piezas_por_presentacion: Number(row.piezas_por_presentacion || row.piezas_por_presentacion_default || 1),
         id_presentacion_default: row.id_presentacion_default ? Number(row.id_presentacion_default) : null,
         presentacion_nombre_default: row.presentacion_nombre_default || "",
+        almacenes_stock: almacenesStock,
+        stock_almacen: stockAlmacen,
+        stock_total: almacenesStock.reduce((acc, item) => acc + Number(item.stock || 0), 0),
         niveles_precio: priceLevels,
-        nivel_precio: firstLevel ? Number(firstLevel.level || 1) : 1,
-        precio_manual_con_iva: firstLevel ? Number(firstLevel.priceWithTax || 0) : Number(row.precio || 0),
-        precio_manual_sin_iva: firstLevel ? Number(firstLevel.priceWithoutTax || 0) : Number(row.precio || 0),
+        nivel_precio: Number(row.nivel_precio || firstLevel?.level || 1),
+        precio_manual_con_iva: Number(row.precio_con_iva || (firstLevel ? firstLevel.priceWithTax : row.precio || 0) || 0),
+        precio_manual_sin_iva: Number(row.precio_sin_iva || (firstLevel ? firstLevel.priceWithoutTax : row.precio || 0) || 0),
     };
 }
 
@@ -119,13 +199,49 @@ function normalizeDetalles(detalles) {
     return detalles.map((detalle, index) => {
         const line = index + 1;
         const id_producto = toPositiveInt(detalle.id_producto, `id_producto de la partida ${line}`);
-        const cantidad = toPositiveInt(detalle.cantidad, `cantidad de la partida ${line}`);
-        const precio = toMoney(detalle.precio, `precio de la partida ${line}`);
-        const subtotal = toMoney(cantidad * precio, `subtotal de la partida ${line}`);
         const rawIdPresentacion = detalle.id_presentacion ?? detalle.id_presentacion_default ?? null;
         const id_presentacion = toPositiveIntOrNull(rawIdPresentacion, `id_presentacion de la partida ${line}`);
+        const id_almacen = toPositiveIntOrNull(detalle.id_almacen, `id_almacen de la partida ${line}`);
+        const cantidad_factura = toPositiveInt(
+            detalle.cantidad_factura !== undefined ? detalle.cantidad_factura : detalle.cantidad,
+            `cantidad de la partida ${line}`
+        );
+        const cantidad_sistema_raw = Number(detalle.cantidad_sistema ?? cantidad_factura);
+        const cantidad_sistema = Number.isInteger(cantidad_sistema_raw) && cantidad_sistema_raw > 0
+            ? cantidad_sistema_raw
+            : cantidad_factura;
+        const nivel_precio = Number.isInteger(Number(detalle.nivel_precio)) && Number(detalle.nivel_precio) >= 1 && Number(detalle.nivel_precio) <= 5
+            ? Number(detalle.nivel_precio)
+            : 1;
+        const precio_sin_iva = toMoney(
+            detalle.precio_sin_iva ?? detalle.precio_manual_sin_iva ?? detalle.precio ?? 0,
+            `precio sin IVA de la partida ${line}`
+        );
+        const precio_con_iva = toMoney(
+            detalle.precio_con_iva ?? detalle.precio_manual_con_iva ?? (precio_sin_iva * (1 + 0.16)),
+            `precio con IVA de la partida ${line}`
+        );
+        const unidad = String(detalle.unidad || "pieza").trim().toLowerCase();
+        const descripcion_personalizada = String(detalle.descripcion_personalizada || "").trim();
+        const requerimiento = String(detalle.requerimiento || "").trim();
+        const subtotal = toMoney(cantidad_factura * precio_sin_iva, `subtotal de la partida ${line}`);
 
-        return { id_producto, id_presentacion, cantidad, precio, subtotal };
+        return {
+            id_producto,
+            id_presentacion,
+            id_almacen,
+            cantidad: cantidad_factura,
+            cantidad_factura,
+            cantidad_sistema,
+            nivel_precio,
+            precio_sin_iva,
+            precio_con_iva,
+            precio: precio_sin_iva,
+            subtotal,
+            unidad,
+            descripcion_personalizada,
+            requerimiento,
+        };
     });
 }
 
@@ -136,6 +252,7 @@ export async function getCotizacionesClientes({
     fecha_desde = "",
     fecha_hasta = "",
 } = {}) {
+    await ensureCotizacionesClienteSchema();
     let sql = `
         SELECT
             c.id_cotizacion,
@@ -194,6 +311,7 @@ export async function getCotizacionesClientes({
 }
 
 export async function getCotizacionClienteById(id) {
+    await ensureCotizacionesClienteSchema();
     const idCotizacion = toPositiveInt(id, "id_cotizacion");
 
     const [headerRows] = await db.execute(
@@ -210,6 +328,9 @@ export async function getCotizacionClienteById(id) {
             c.id_usuario,
             u.nombre AS usuario_nombre,
             c.total,
+            c.vigencia_modo,
+            c.vigencia_dias,
+            c.fecha_vencimiento,
             c.estado,
             c.created_at,
             DATE(c.created_at) AS fecha_emision
@@ -232,77 +353,111 @@ export async function getCotizacionClienteById(id) {
         SELECT
             dc.id_detalleCotizacion,
             dc.id_producto,
+            dc.id_presentacion,
+            dc.id_almacen,
             p.nombre AS producto_nombre,
-            dc.cantidad,
-            dc.precio,
+            pp.nombre AS presentacion_nombre,
+            a.nombre AS almacen_nombre,
+            dc.descripcion_personalizada,
+            dc.requerimiento,
+            dc.cantidad_sistema,
+            dc.cantidad AS cantidad_factura,
+            dc.unidad,
+            dc.nivel_precio,
+            dc.precio AS precio_sin_iva,
+            dc.precio_con_iva,
             dc.subtotal,
-            (
-                SELECT pp.id_presentacion
-                FROM producto_presentaciones pp
-                WHERE pp.id_producto = dc.id_producto AND pp.activo = 1
-                ORDER BY pp.id_presentacion ASC
-                LIMIT 1
-            ) AS id_presentacion_default,
-            (
-                SELECT pp.nombre
-                FROM producto_presentaciones pp
-                WHERE pp.id_producto = dc.id_producto AND pp.activo = 1
-                ORDER BY pp.id_presentacion ASC
-                LIMIT 1
-            ) AS presentacion_nombre_default
-            ,(
-                SELECT pp.precio_nivel_1
-                FROM producto_presentaciones pp
-                WHERE pp.id_producto = dc.id_producto AND pp.activo = 1
-                ORDER BY pp.id_presentacion ASC
-                LIMIT 1
-            ) AS precio_nivel_1_default
-            ,(
-                SELECT pp.precio_nivel_2
-                FROM producto_presentaciones pp
-                WHERE pp.id_producto = dc.id_producto AND pp.activo = 1
-                ORDER BY pp.id_presentacion ASC
-                LIMIT 1
-            ) AS precio_nivel_2_default
-            ,(
-                SELECT pp.precio_nivel_3
-                FROM producto_presentaciones pp
-                WHERE pp.id_producto = dc.id_producto AND pp.activo = 1
-                ORDER BY pp.id_presentacion ASC
-                LIMIT 1
-            ) AS precio_nivel_3_default
-            ,(
-                SELECT pp.precio_nivel_4
-                FROM producto_presentaciones pp
-                WHERE pp.id_producto = dc.id_producto AND pp.activo = 1
-                ORDER BY pp.id_presentacion ASC
-                LIMIT 1
-            ) AS precio_nivel_4_default
-            ,(
-                SELECT pp.precio_nivel_5
-                FROM producto_presentaciones pp
-                WHERE pp.id_producto = dc.id_producto AND pp.activo = 1
-                ORDER BY pp.id_presentacion ASC
-                LIMIT 1
-            ) AS precio_nivel_5_default
+            COALESCE(i.stock, 0) AS stock_almacen,
+            pp_default.id_presentacion AS id_presentacion_default,
+            pp_default.nombre AS presentacion_nombre_default,
+            pp_default.piezas_por_presentacion AS piezas_por_presentacion_default,
+            COALESCE(pp.precio_nivel_1, pp_default.precio_nivel_1) AS precio_nivel_1,
+            COALESCE(pp.precio_nivel_2, pp_default.precio_nivel_2) AS precio_nivel_2,
+            COALESCE(pp.precio_nivel_3, pp_default.precio_nivel_3) AS precio_nivel_3,
+            COALESCE(pp.precio_nivel_4, pp_default.precio_nivel_4) AS precio_nivel_4,
+            COALESCE(pp.precio_nivel_5, pp_default.precio_nivel_5) AS precio_nivel_5,
+            pp_default.precio_nivel_1 AS precio_nivel_1_default,
+            pp_default.precio_nivel_2 AS precio_nivel_2_default,
+            pp_default.precio_nivel_3 AS precio_nivel_3_default,
+            pp_default.precio_nivel_4 AS precio_nivel_4_default,
+            pp_default.precio_nivel_5 AS precio_nivel_5_default
         FROM detalle_cotizacion dc
         INNER JOIN productos p ON p.id_producto = dc.id_producto
+        LEFT JOIN producto_presentaciones pp ON pp.id_presentacion = dc.id_presentacion
+        LEFT JOIN producto_presentaciones pp_default ON pp_default.id_presentacion = (
+            SELECT pp2.id_presentacion
+            FROM producto_presentaciones pp2
+            WHERE pp2.id_producto = dc.id_producto AND pp2.activo = 1
+            ORDER BY pp2.id_presentacion ASC
+            LIMIT 1
+        )
+        LEFT JOIN almacenes a ON a.id_almacen = dc.id_almacen
+        LEFT JOIN inventario i ON i.id_presentacion = dc.id_presentacion AND i.id_almacen = dc.id_almacen
         WHERE dc.id_cotizacion = ?
         ORDER BY dc.id_detalleCotizacion ASC
         `,
         [idCotizacion]
     );
 
+    const presentacionIds = detalleRows
+        .map((row) => Number(row.id_presentacion || row.id_presentacion_default))
+        .filter((presentacionId) => Number.isInteger(presentacionId) && presentacionId > 0);
+    const almacenesStockByPresentacion = new Map();
+
+    if (presentacionIds.length) {
+        const placeholders = presentacionIds.map(() => "?").join(", ");
+        const [stockRows] = await db.execute(
+            `
+            SELECT
+                inv.id_presentacion,
+                inv.id_almacen,
+                a.nombre AS almacen_nombre,
+                COALESCE(inv.stock, 0) AS stock
+            FROM inventario inv
+            INNER JOIN almacenes a ON a.id_almacen = inv.id_almacen
+            WHERE inv.id_presentacion IN (${placeholders})
+            ORDER BY a.nombre ASC
+            `,
+            presentacionIds
+        );
+
+        for (const stockRow of stockRows) {
+            const key = Number(stockRow.id_presentacion);
+            if (!almacenesStockByPresentacion.has(key)) {
+                almacenesStockByPresentacion.set(key, []);
+            }
+
+            almacenesStockByPresentacion.get(key).push({
+                id_almacen: Number(stockRow.id_almacen),
+                nombre: String(stockRow.almacen_nombre || "").trim(),
+                stock: Number(stockRow.stock || 0),
+            });
+        }
+    }
+
     return {
         ...normalizeHeaderRow(headerRows[0]),
-        detalles: detalleRows.map(normalizeDetalleRow),
+        detalles: detalleRows.map((row) => {
+            const normalized = normalizeDetalleRow(row);
+            const presentacionKey = Number(row.id_presentacion || row.id_presentacion_default);
+            const almacenes_stock = almacenesStockByPresentacion.get(presentacionKey) || normalized.almacenes_stock;
+            return {
+                ...normalized,
+                almacenes_stock,
+                stock_total: almacenes_stock.reduce((acc, item) => acc + Number(item.stock || 0), 0),
+            };
+        }),
     };
 }
 
 export async function createCotizacionCliente(data) {
+    await ensureCotizacionesClienteSchema();
     const id_cliente = toPositiveInt(data.id_cliente, "id_cliente");
     const id_usuario = toPositiveInt(data.id_usuario, "id_usuario");
     const estado = String(data.estado || "pendiente").toLowerCase();
+    const vigencia_modo = String(data.vigencia_modo || "dias").toLowerCase() === "manual" ? "manual" : "dias";
+    const vigencia_dias = toPositiveInt(data.vigencia_dias || 1, "vigencia_dias");
+    const fecha_vencimiento = data.fecha_vencimiento ? toDate(data.fecha_vencimiento, "fecha_vencimiento") : null;
     if (!["pendiente", "aprobada", "rechazada", "convertida"].includes(estado)) {
         throw new Error("estado invalido");
     }
@@ -319,10 +474,10 @@ export async function createCotizacionCliente(data) {
 
         const [insertResult] = await conn.execute(
             `
-            INSERT INTO cotizaciones (folio, id_cliente, id_usuario, total, estado)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO cotizaciones (folio, id_cliente, id_usuario, total, estado, vigencia_modo, vigencia_dias, fecha_vencimiento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [folio, id_cliente, id_usuario, total, estado]
+            [folio, id_cliente, id_usuario, total, estado, vigencia_modo, vigencia_dias, fecha_vencimiento]
         );
 
         const id_cotizacion = insertResult.insertId;
@@ -338,10 +493,40 @@ export async function createCotizacionCliente(data) {
 
             await conn.execute(
                 `
-                INSERT INTO detalle_cotizacion (id_cotizacion, id_producto, id_presentacion, cantidad, precio, subtotal)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO detalle_cotizacion (
+                    id_cotizacion,
+                    id_producto,
+                    id_presentacion,
+                    id_almacen,
+                    descripcion_personalizada,
+                    requerimiento,
+                    cantidad_sistema,
+                    cantidad,
+                    unidad,
+                    nivel_precio,
+                    precio,
+                    precio_sin_iva,
+                    precio_con_iva,
+                    subtotal
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
-                [id_cotizacion, item.id_producto, id_presentacion_to_use, item.cantidad, item.precio, item.subtotal]
+                [
+                    id_cotizacion,
+                    item.id_producto,
+                    id_presentacion_to_use,
+                    item.id_almacen,
+                    item.descripcion_personalizada || null,
+                    item.requerimiento || null,
+                    item.cantidad_sistema,
+                    item.cantidad_factura,
+                    item.unidad,
+                    item.nivel_precio,
+                    item.precio_sin_iva,
+                    item.precio_sin_iva,
+                    item.precio_con_iva,
+                    item.subtotal,
+                ]
             );
         }
 
@@ -356,10 +541,14 @@ export async function createCotizacionCliente(data) {
 }
 
 export async function updateCotizacionCliente(id, data) {
+    await ensureCotizacionesClienteSchema();
     const id_cotizacion = toPositiveInt(id, "id_cotizacion");
     const id_cliente = toPositiveInt(data.id_cliente, "id_cliente");
     const id_usuario = toPositiveInt(data.id_usuario, "id_usuario");
     const estado = String(data.estado || "pendiente").toLowerCase();
+    const vigencia_modo = String(data.vigencia_modo || "dias").toLowerCase() === "manual" ? "manual" : "dias";
+    const vigencia_dias = toPositiveInt(data.vigencia_dias || 1, "vigencia_dias");
+    const fecha_vencimiento = data.fecha_vencimiento ? toDate(data.fecha_vencimiento, "fecha_vencimiento") : null;
     if (!["pendiente", "aprobada", "rechazada", "convertida"].includes(estado)) {
         throw new Error("estado invalido");
     }
@@ -375,10 +564,10 @@ export async function updateCotizacionCliente(id, data) {
         const [updateResult] = await conn.execute(
             `
             UPDATE cotizaciones
-            SET id_cliente = ?, id_usuario = ?, total = ?, estado = ?
+            SET id_cliente = ?, id_usuario = ?, total = ?, estado = ?, vigencia_modo = ?, vigencia_dias = ?, fecha_vencimiento = ?
             WHERE id_cotizacion = ?
             `,
-            [id_cliente, id_usuario, total, estado, id_cotizacion]
+            [id_cliente, id_usuario, total, estado, vigencia_modo, vigencia_dias, fecha_vencimiento, id_cotizacion]
         );
 
         if (!updateResult.affectedRows) {
@@ -398,10 +587,40 @@ export async function updateCotizacionCliente(id, data) {
 
             await conn.execute(
                 `
-                INSERT INTO detalle_cotizacion (id_cotizacion, id_producto, id_presentacion, cantidad, precio, subtotal)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO detalle_cotizacion (
+                    id_cotizacion,
+                    id_producto,
+                    id_presentacion,
+                    id_almacen,
+                    descripcion_personalizada,
+                    requerimiento,
+                    cantidad_sistema,
+                    cantidad,
+                    unidad,
+                    nivel_precio,
+                    precio,
+                    precio_sin_iva,
+                    precio_con_iva,
+                    subtotal
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
-                [id_cotizacion, item.id_producto, id_presentacion_to_use, item.cantidad, item.precio, item.subtotal]
+                [
+                    id_cotizacion,
+                    item.id_producto,
+                    id_presentacion_to_use,
+                    item.id_almacen,
+                    item.descripcion_personalizada || null,
+                    item.requerimiento || null,
+                    item.cantidad_sistema,
+                    item.cantidad_factura,
+                    item.unidad,
+                    item.nivel_precio,
+                    item.precio_sin_iva,
+                    item.precio_sin_iva,
+                    item.precio_con_iva,
+                    item.subtotal,
+                ]
             );
         }
 
@@ -416,6 +635,7 @@ export async function updateCotizacionCliente(id, data) {
 }
 
 export async function deleteCotizacionCliente(id) {
+    await ensureCotizacionesClienteSchema();
     const id_cotizacion = toPositiveInt(id, "id_cotizacion");
     const [result] = await db.execute("DELETE FROM cotizaciones WHERE id_cotizacion = ?", [id_cotizacion]);
 

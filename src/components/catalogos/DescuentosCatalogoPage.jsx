@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Loader, Search, Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Loader, Search, Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import PageTitle from "@/components/ui/PageTitle";
@@ -21,15 +21,12 @@ export default function DescuentosCatalogoPage({
     const [error, setError] = useState("");
     const [search, setSearch] = useState("");
     const [rows, setRows] = useState([]);
+    const [currentPage, setCurrentPage] = useState(1);
 
     const [formModal, setFormModal] = useState({ open: false, mode: "create", item: null });
     const [itemToDelete, setItemToDelete] = useState(null);
 
-    useEffect(() => {
-        load();
-    }, []);
-
-    const load = async () => {
+    const load = useCallback(async () => {
         try {
             setLoading(true);
             const data = await getItems();
@@ -40,13 +37,42 @@ export default function DescuentosCatalogoPage({
         } finally {
             setLoading(false);
         }
-    };
+    }, [getItems, title]);
+
+    useEffect(() => {
+        load();
+    }, [load]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [search]);
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return rows;
         return rows.filter((row) => String(row.nombre || "").toLowerCase().includes(q));
     }, [rows, search]);
+
+    const pageSize = 8;
+    const totalItems = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
+
+    const paginatedRows = useMemo(() => {
+        const startIndex = (safeCurrentPage - 1) * pageSize;
+        return filtered.slice(startIndex, startIndex + pageSize);
+    }, [filtered, safeCurrentPage]);
+
+    const startItem = totalItems === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
+    const endItem = totalItems === 0 ? 0 : Math.min(safeCurrentPage * pageSize, totalItems);
+
+    const maxVisiblePages = 5;
+    const startPage = Math.max(
+        1,
+        Math.min(safeCurrentPage - Math.floor(maxVisiblePages / 2), totalPages - maxVisiblePages + 1)
+    );
+    const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
 
     const onSave = async (payload) => {
         if (formModal.mode === "create") {
@@ -64,6 +90,9 @@ export default function DescuentosCatalogoPage({
         setItemToDelete(null);
         await load();
     };
+
+    const paginationButtonClass =
+        "inline-flex items-center justify-center h-9 w-9 rounded-lg border border-border bg-white text-primary hover:bg-background disabled:opacity-50 disabled:cursor-not-allowed";
 
     if (loading) {
         return (
@@ -113,13 +142,13 @@ export default function DescuentosCatalogoPage({
                         </tr>
                     </thead>
                     <tbody>
-                        {filtered.length === 0 && (
+                        {paginatedRows.length === 0 && (
                             <tr>
                                 <td colSpan={7} className="p-6 text-center text-muted">No hay {title.toLowerCase()} para mostrar.</td>
                             </tr>
                         )}
 
-                        {filtered.map((row) => {
+                        {paginatedRows.map((row) => {
                             const isActivo = row.activo === 1 || row.activo === true || row.activo === "1";
                             return (
                                 <tr key={row[idKey]} className="border-t border-border hover:bg-background/50">
@@ -149,6 +178,79 @@ export default function DescuentosCatalogoPage({
                     </tbody>
                 </table>
             </div>
+
+            {totalPages > 1 && (
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-1">
+                    <p className="text-sm text-muted">
+                        {totalItems === 0
+                            ? "No hay resultados para mostrar."
+                            : `Mostrando ${startItem}-${endItem} de ${totalItems} ${title.toLowerCase()}`}
+                    </p>
+
+                    <div className="flex justify-end items-center gap-2 flex-wrap">
+                        {totalPages > maxVisiblePages && (
+                            <button
+                                type="button"
+                                onClick={() => setCurrentPage(1)}
+                                disabled={safeCurrentPage === 1}
+                                className={`${paginationButtonClass} min-w-9 px-2`}
+                                aria-label="Primera página"
+                                title="Primera página"
+                            >
+                                <span aria-hidden="true">«</span>
+                            </button>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                            disabled={safeCurrentPage === 1}
+                            className={paginationButtonClass}
+                            aria-label="Página anterior"
+                            title="Página anterior"
+                        >
+                            <ChevronLeft size={16} className="mx-auto shrink-0" />
+                            <span className="sr-only">Página anterior</span>
+                        </button>
+
+                        {visiblePages.map((page) => (
+                            <Button
+                                key={page}
+                                onClick={() => setCurrentPage(page)}
+                                variant={page === safeCurrentPage ? "tabActive" : "tabIdle"}
+                                className="h-9 min-w-9 px-3 border text-sm"
+                            >
+                                {page}
+                            </Button>
+                        ))}
+
+                        <button
+                            type="button"
+                            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                            disabled={safeCurrentPage === totalPages}
+                            className={paginationButtonClass}
+                            aria-label="Página siguiente"
+                            title="Página siguiente"
+                        >
+                            <ChevronRight size={16} className="mx-auto shrink-0" />
+                            <span className="sr-only">Página siguiente</span>
+                        </button>
+
+                        {totalPages > maxVisiblePages && (
+                            <button
+                                type="button"
+                                onClick={() => setCurrentPage(totalPages)}
+                                disabled={safeCurrentPage === totalPages}
+                                className={`${paginationButtonClass} min-w-9 px-2`}
+                                aria-label="Última página"
+                                title="Última página"
+                            >
+                                <span aria-hidden="true">»</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {formModal.open && (
                 <div className="fixed inset-0 z-50 bg-primary/40 flex items-center justify-center p-4">

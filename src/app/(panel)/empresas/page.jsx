@@ -1,28 +1,23 @@
 "use client";
 
-import { Search, ChevronLeft, ChevronRight, Loader, Plus, Pencil, Trash2, Building2 } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Search, ChevronLeft, ChevronRight, Loader, Plus, Pencil, Trash2, Eye, Building2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import PageTitle from "@/components/ui/PageTitle";
 import { FilterPopover, FilterChip } from "@/components/ui/FilterPopover";
-import { createEmpresa, deleteEmpresa, updateEmpresa, getEmpresas } from "@/services/empresasService";
+import { deleteEmpresa, getEmpresas, updateEmpresa } from "@/services/empresasService";
+
+import AgregarEmpresasView from "./AgregarEmpresasView";
+import EditarEmpresas from "./EditarEmpresas";
+import VerEmpresaView from "./VerEmpresaView";
 
 const DEFAULT_FILTERS = {
     has_rfc: "all",
     cp: "",
-};
-
-const EMPTY_FORM = {
-    nombre: "",
-    nombre_fiscal: "",
-    pago_habitual: "",
-    rfc: "",
-    direccion: "",
-    colonia: "",
-    ciudad: "",
-    estado: "",
-    cp: "",
+    activo: "all",
 };
 
 function fmtDate(value) {
@@ -39,6 +34,38 @@ function fmtDate(value) {
 }
 
 export default function EmpresasPage() {
+    return (
+        <Suspense fallback={<EmpresasPageFallback />}>
+            <EmpresasPageContent />
+        </Suspense>
+    );
+}
+
+function EmpresasPageFallback() {
+    return (
+        <div className="flex items-center justify-center h-64">
+            <Loader className="animate-spin text-primary" />
+        </div>
+    );
+}
+
+function EmpresasPageContent() {
+    const searchParams = useSearchParams();
+    const mode = searchParams.get("mode");
+    const selectedId = searchParams.get("id");
+
+    if (mode === "add") {
+        return <AgregarEmpresasView />;
+    }
+
+    if (mode === "edit" && selectedId) {
+        return <EditarEmpresas id={selectedId} />;
+    }
+
+    if (mode === "view" && selectedId) {
+        return <VerEmpresaView id={selectedId} />;
+    }
+
     return <EmpresasListView />;
 }
 
@@ -46,14 +73,11 @@ function EmpresasListView() {
     const [empresas, setEmpresas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [saveError, setSaveError] = useState("");
+    const [actionError, setActionError] = useState("");
     const [saving, setSaving] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [filters, setFilters] = useState(DEFAULT_FILTERS);
     const [currentPage, setCurrentPage] = useState(1);
-    const [modalOpen, setModalOpen] = useState(false);
-    const [editingId, setEditingId] = useState(null);
-    const [formData, setFormData] = useState(EMPTY_FORM);
     const pageSize = 10;
 
     const loadEmpresas = async () => {
@@ -98,10 +122,16 @@ function EmpresasListView() {
                 (filters.has_rfc === "1" && hasRfc) ||
                 (filters.has_rfc === "0" && !hasRfc);
 
+            const isActivo = empresa.activo === 1 || empresa.activo === "1" || empresa.activo === true;
+            const byActivo =
+                filters.activo === "all" ||
+                (filters.activo === "1" && isActivo) ||
+                (filters.activo === "0" && !isActivo);
+
             const cpFilter = String(filters.cp || "").trim();
             const byCp = !cpFilter || String(empresa.cp || "").includes(cpFilter);
 
-            return bySearch && byRfc && byCp;
+            return bySearch && byRfc && byCp && byActivo;
         });
     }, [empresas, searchTerm, filters]);
 
@@ -125,106 +155,11 @@ function EmpresasListView() {
     const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
     const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
 
-    const openCreateModal = () => {
-        setEditingId(null);
-        setFormData(EMPTY_FORM);
-        setSaveError("");
-        setModalOpen(true);
-    };
-
-    const openEditModal = (empresa) => {
-        setEditingId(empresa.id_empresa);
-        setFormData({
-            nombre: empresa.nombre || "",
-            nombre_fiscal: empresa.nombre_fiscal || "",
-            pago_habitual: empresa.pago_habitual || "",
-            rfc: empresa.rfc || "",
-            direccion: empresa.direccion || "",
-            colonia: empresa.colonia || "",
-            ciudad: empresa.ciudad || "",
-            estado: empresa.estado || "",
-            cp: empresa.cp || "",
-        });
-        setSaveError("");
-        setModalOpen(true);
-    };
-
-    const closeModal = () => {
-        setModalOpen(false);
-        setEditingId(null);
-        setFormData(EMPTY_FORM);
-        setSaveError("");
-    };
-
-    const validateForm = () => {
-        if (!String(formData.nombre || "").trim()) {
-            return "El nombre es requerido";
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
         }
-
-        if (!String(formData.nombre_fiscal || "").trim()) {
-            return "El nombre fiscal es requerido";
-        }
-
-        if (!String(formData.cp || "").trim()) {
-            return "El código postal es requerido";
-        }
-
-        if (!String(formData.direccion || "").trim()) {
-            return "La dirección es requerida";
-        }
-
-        if (!String(formData.colonia || "").trim()) {
-            return "La colonia es requerida";
-        }
-
-        if (!String(formData.ciudad || "").trim()) {
-            return "La ciudad es requerida";
-        }
-
-        if (!String(formData.estado || "").trim()) {
-            return "El estado es requerido";
-        }
-
-        return "";
-    };
-
-    const handleSave = async () => {
-        const validationMessage = validateForm();
-        if (validationMessage) {
-            setSaveError(validationMessage);
-            return;
-        }
-
-        const payload = {
-            nombre: String(formData.nombre || "").trim(),
-            nombre_fiscal: String(formData.nombre_fiscal || "").trim(),
-            pago_habitual: String(formData.pago_habitual || "").trim(),
-            rfc: String(formData.rfc || "").trim(),
-            direccion: String(formData.direccion || "").trim(),
-            colonia: String(formData.colonia || "").trim(),
-            ciudad: String(formData.ciudad || "").trim(),
-            estado: String(formData.estado || "").trim(),
-            cp: String(formData.cp || "").trim(),
-        };
-
-        try {
-            setSaving(true);
-            setSaveError("");
-
-            if (editingId) {
-                await updateEmpresa(editingId, payload);
-            } else {
-                await createEmpresa(payload);
-            }
-
-            closeModal();
-            await loadEmpresas();
-        } catch (saveErr) {
-            setSaveError(saveErr.message || "No se pudo guardar la empresa");
-        } finally {
-            setSaving(false);
-        }
-    };
+    }, [currentPage, totalPages]);
 
     const handleDelete = async (empresa) => {
         const confirmed = window.confirm(`¿Eliminar la empresa ${empresa.nombre}?`);
@@ -234,21 +169,33 @@ function EmpresasListView() {
 
         try {
             setSaving(true);
-            setSaveError("");
+            setActionError("");
             await deleteEmpresa(empresa.id_empresa);
             await loadEmpresas();
         } catch (deleteError) {
-            setSaveError(deleteError.message || "No se pudo eliminar la empresa");
+            setActionError(deleteError.message || "No se pudo eliminar la empresa");
         } finally {
             setSaving(false);
         }
     };
 
-    useEffect(() => {
-        if (currentPage > totalPages) {
-            setCurrentPage(totalPages);
+    const handleToggleActive = async (empresa) => {
+        const isActivo = empresa.activo === 1 || empresa.activo === "1" || empresa.activo === true;
+        const nextActivo = isActivo ? 0 : 1;
+
+        try {
+            setSaving(true);
+            setActionError("");
+            await updateEmpresa(empresa.id_empresa, { activo: nextActivo });
+            setEmpresas((prev) => prev.map((item) => (
+                item.id_empresa === empresa.id_empresa ? { ...item, activo: nextActivo } : item
+            )));
+        } catch (toggleError) {
+            setActionError(toggleError.message || "No se pudo actualizar el estado de la empresa");
+        } finally {
+            setSaving(false);
         }
-    }, [currentPage, totalPages]);
+    };
 
     if (loading) {
         return (
@@ -264,7 +211,6 @@ function EmpresasListView() {
         );
     }
 
-
     return (
         <div>
             <PageTitle
@@ -272,10 +218,12 @@ function EmpresasListView() {
                 subtitle="Lista de empresas"
                 icon={<Building2 size={20} />}
                 actions={(
-                    <Button variant="primary" className="rounded-xl shadow-sm gap-2" onClick={openCreateModal}>
-                        <Plus size={16} />
-                        Agregar empresa
-                    </Button>
+                    <Link href="/empresas?mode=add">
+                        <Button variant="primary" className="rounded-xl shadow-sm gap-2">
+                            <Plus size={16} />
+                            Agregar empresa
+                        </Button>
+                    </Link>
                 )}
             />
 
@@ -298,17 +246,17 @@ function EmpresasListView() {
                 </div>
             </div>
 
-            {saveError && (
+            {actionError && (
                 <div className="mb-3 bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
-                    {saveError}
+                    {actionError}
                 </div>
             )}
 
             <div className="bg-white rounded-2xl shadow-card border border-border overflow-hidden">
                 <EmpresaTableInline
                     data={paginatedEmpresas}
-                    onEdit={openEditModal}
                     onDelete={handleDelete}
+                    onToggleActive={handleToggleActive}
                     disabled={saving}
                 />
 
@@ -328,7 +276,8 @@ function EmpresasListView() {
                                 disabled={safeCurrentPage === 1}
                                 variant="outline"
                                 className="h-9 min-w-9 px-2"
-                                aria-label="Primera página" >
+                                aria-label="Primera página"
+                            >
                                 «
                             </Button>
                         )}
@@ -338,7 +287,8 @@ function EmpresasListView() {
                             disabled={safeCurrentPage === 1}
                             variant="outline"
                             className="h-9 w-9 p-0"
-                            aria-label="Página anterior" >
+                            aria-label="Página anterior"
+                        >
                             <ChevronLeft size={16} className="mx-auto" />
                         </Button>
 
@@ -347,7 +297,8 @@ function EmpresasListView() {
                                 key={page}
                                 onClick={() => setCurrentPage(page)}
                                 variant={page === safeCurrentPage ? "tabActive" : "tabIdle"}
-                                className="h-9 min-w-9 px-3 border text-sm" >
+                                className="h-9 min-w-9 px-3 border text-sm"
+                            >
                                 {page}
                             </Button>
                         ))}
@@ -357,7 +308,8 @@ function EmpresasListView() {
                             disabled={safeCurrentPage === totalPages}
                             variant="outline"
                             className="h-9 w-9 p-0"
-                            aria-label="Página siguiente">
+                            aria-label="Página siguiente"
+                        >
                             <ChevronRight size={16} className="mx-auto" />
                         </Button>
 
@@ -367,96 +319,14 @@ function EmpresasListView() {
                                 disabled={safeCurrentPage === totalPages}
                                 variant="outline"
                                 className="h-9 min-w-9 px-2"
-                                aria-label="Última página">
+                                aria-label="Última página"
+                            >
                                 »
                             </Button>
                         )}
                     </div>
                 )}
             </div>
-
-            {modalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 px-4">
-                    <div className="w-full max-w-2xl rounded-2xl border border-border bg-white shadow-card p-6">
-                        <div className="flex items-center gap-2 mb-4 text-primary">
-                            <Building2 size={20} />
-                            <h3 className="text-lg font-semibold">
-                                {editingId ? "Editar empresa" : "Agregar empresa"}
-                            </h3>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                            <Input
-                                label="Nombre"
-                                value={formData.nombre}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, nombre: e.target.value }))}
-                            />
-                            <Input
-                                label="Nombre fiscal"
-                                value={formData.nombre_fiscal}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, nombre_fiscal: e.target.value }))}
-                            />
-                            <Input
-                                label="RFC"
-                                value={formData.rfc}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, rfc: e.target.value }))}
-                            />
-                            <Input
-                                label="Pago habitual (opcional)"
-                                type="date"
-                                value={formData.pago_habitual}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, pago_habitual: e.target.value }))}
-                            />
-                            <Input
-                                label="Código postal"
-                                value={formData.cp}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, cp: e.target.value }))}
-                            />
-                            <Input
-                                label="Dirección"
-                                value={formData.direccion}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, direccion: e.target.value }))}
-                            />
-                            <Input
-                                label="Colonia"
-                                value={formData.colonia}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, colonia: e.target.value }))}
-                            />
-                            <Input
-                                label="Ciudad"
-                                value={formData.ciudad}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, ciudad: e.target.value }))}
-                            />
-                            <Input
-                                label="Estado"
-                                value={formData.estado}
-                                onChange={(e) => setFormData((prev) => ({ ...prev, estado: e.target.value }))}
-                            />
-                        </div>
-
-                        {saveError ? (
-                            <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-                                {saveError}
-                            </div>
-                        ) : null}
-
-                        <div className="flex justify-end gap-3">
-                            <Button
-                                onClick={closeModal}
-                                disabled={saving}
-                                variant="outline">
-                                Cancelar
-                            </Button>
-                            <Button
-                                onClick={handleSave}
-                                disabled={saving}
-                                variant="primary">
-                                {saving ? "Guardando..." : "Guardar"}
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
@@ -471,7 +341,7 @@ function EmpresasFiltersInline({ value, onApply, onClear }) {
     };
 
     const handleClear = () => {
-        const reset = DEFAULT_FILTERS;
+        const reset = { ...DEFAULT_FILTERS };
         setDraft(reset);
         onClear?.();
         setOpen(false);
@@ -483,7 +353,7 @@ function EmpresasFiltersInline({ value, onApply, onClear }) {
                 open={open}
                 onOpenChange={(nextOpen) => {
                     if (nextOpen) {
-                        setDraft(value || DEFAULT_FILTERS);
+                        setDraft(value || { ...DEFAULT_FILTERS });
                     }
                     setOpen(nextOpen);
                 }}
@@ -501,19 +371,27 @@ function EmpresasFiltersInline({ value, onApply, onClear }) {
                     </div>
                 </div>
 
+                <div>
+                    <p className="text-xs text-muted mb-2">Estado</p>
+                    <div className="flex gap-2 flex-wrap">
+                        <FilterChip active={draft.activo === "all"} onClick={() => setDraft((prev) => ({ ...prev, activo: "all" }))}>Todos</FilterChip>
+                        <FilterChip active={draft.activo === "1"} onClick={() => setDraft((prev) => ({ ...prev, activo: "1" }))}>Activas</FilterChip>
+                        <FilterChip active={draft.activo === "0"} onClick={() => setDraft((prev) => ({ ...prev, activo: "0" }))}>Inactivas</FilterChip>
+                    </div>
+                </div>
+
                 <Input
                     label="Código postal"
                     value={draft.cp}
                     onChange={(e) => setDraft((prev) => ({ ...prev, cp: e.target.value }))}
                     placeholder="Ej. 27000"
                 />
-
             </FilterPopover>
         </div>
     );
 }
 
-function EmpresaTableInline({ data, onEdit, onDelete, disabled }) {
+function EmpresaTableInline({ data, onDelete, onToggleActive, disabled }) {
     return (
         <table className="w-full text-sm">
             <thead className="bg-background text-primary">
@@ -523,11 +401,7 @@ function EmpresaTableInline({ data, onEdit, onDelete, disabled }) {
                     <th className="text-left p-3">Nombre fiscal</th>
                     <th className="text-left p-3">Pago habitual</th>
                     <th className="text-left p-3">RFC</th>
-                    <th className="text-left p-3">Dirección</th>
-                    <th className="text-left p-3">Colonia</th>
-                    <th className="text-left p-3">Ciudad</th>
-                    <th className="text-left p-3">Estado</th>
-                    <th className="text-left p-3">C.P.</th>
+                    <th className="text-center p-3">Activo</th>
                     <th className="text-center p-3">Acciones</th>
                 </tr>
             </thead>
@@ -535,7 +409,7 @@ function EmpresaTableInline({ data, onEdit, onDelete, disabled }) {
             <tbody>
                 {data.length === 0 && (
                     <tr>
-                        <td colSpan={11} className="p-6 text-center text-muted">No hay empresas para mostrar.</td>
+                        <td colSpan={12} className="p-6 text-center text-muted">No hay empresas para mostrar.</td>
                     </tr>
                 )}
 
@@ -546,23 +420,35 @@ function EmpresaTableInline({ data, onEdit, onDelete, disabled }) {
                         <td className="p-3">{empresa.nombre_fiscal}</td>
                         <td className="p-3">{fmtDate(empresa.pago_habitual)}</td>
                         <td className="p-3">{empresa.rfc || "-"}</td>
-                        <td className="p-3">{empresa.direccion || "-"}</td>
-                        <td className="p-3">{empresa.colonia || "-"}</td>
-                        <td className="p-3">{empresa.ciudad || "-"}</td>
-                        <td className="p-3">{empresa.estado || "-"}</td>
-                        <td className="p-3">{empresa.cp}</td>
+                        <td className="p-3 text-center">
+                            {(() => {
+                                const isActivo = empresa.activo === 1 || empresa.activo === "1" || empresa.activo === true;
+                                return (
+                                    <Button
+                                        onClick={() => onToggleActive?.(empresa)}
+                                        disabled={disabled}
+                                        variant={isActivo ? "activo" : "inactivo"}
+                                        size="sm"
+                                        className="rounded-full"
+                                    >
+                                        {isActivo ? "Activo" : "Inactivo"}
+                                    </Button>
+                                );
+                            })()}
+                        </td>
 
                         <td className="p-3">
                             <div className="flex justify-center text-muted">
-                                <Button
-                                    variant="lightghost"
-                                    className="p-0 h-auto"
-                                    onClick={() => onEdit?.(empresa)}
-                                    disabled={disabled}
-                                    aria-label="Editar empresa"
-                                >
-                                    <Pencil size={18} className="hover:text-yellow-700" />
-                                </Button>
+                                <Link href={`/empresas?mode=view&id=${empresa.id_empresa}`}>
+                                    <Button variant="lightghost" className="p-0 h-auto" aria-label="Ver detalle de empresa">
+                                        <Eye size={18} className="hover:text-primary" />
+                                    </Button>
+                                </Link>
+                                <Link href={`/empresas?mode=edit&id=${empresa.id_empresa}`}>
+                                    <Button variant="lightghost" className="p-0 h-auto" aria-label="Editar empresa">
+                                        <Pencil size={18} className="hover:text-yellow-700" />
+                                    </Button>
+                                </Link>
                                 <Button
                                     variant="lightghost"
                                     className="p-0 h-auto"
